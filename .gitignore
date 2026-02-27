@@ -1,0 +1,7 @@
+state/
+intel/
+agents/*/memory/
+*.jsonl
+.openclaw/
+.pi
+.env

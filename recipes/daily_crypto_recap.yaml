@@ -1,0 +1,54 @@
+name: daily_crypto_recap
+enabled: false
+
+schedule:
+  type: daily
+  time: "19:00"
+  timezone: "Europe/Paris"
+
+sources:
+  # Sources internationales
+  - https://cointelegraph.com/rss
+  - https://www.coindesk.com/arc/outboundfeeds/rss/
+  - https://www.theblock.co/
+  - https://decrypt.co/
+  # Sources françaises
+  - https://cryptoast.fr/feed/
+  - https://journalducoin.com/feed/
+
+filters:
+  allow_domains:
+    - cointelegraph.com
+    - coindesk.com
+    - theblock.co
+    - decrypt.co
+    - cryptoast.fr
+    - journalducoin.com
+
+content_rules:
+  - Extraire uniquement les faits, chiffres et événements. Jamais les formulations originales.
+  - Réécrire intégralement dans le style CryptoRizon (Ogilvy, Halbert, Stan Leloup, Antoine BM)
+  - Phrases courtes. Une idée par ligne. Rythme rapide. Ton direct et impactant.
+  - Langue de sortie : français uniquement
+  - Ne jamais reproduire de titres ou phrases reconnaissables des sources
+
+output:
+  step1_digest:
+    format: numbered_list
+    description: Liste numérotée de toutes les news des 24h avec titre court + 1 ligne de contexte
+    deliver_to: telegram
+
+  step2_post:
+    format: twitter_thread
+    trigger: user_selection
+    description: Daniel choisit les numéros qui l'intéressent, l'agent génère le post
+    max_tweets: 8
+    model: anthropic/claude-sonnet-4-5
+    style: cryptorizon_copywriting
+
+approval:
+  required: true
+  channel: telegram
+  flow:
+    - step1_digest → Daniel sélectionne les numéros
+    - step2_post → Daniel valide → publication Twitter @CryptoRizon

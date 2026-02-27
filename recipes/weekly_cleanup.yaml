@@ -1,0 +1,19 @@
+name: weekly_cleanup
+enabled: true
+
+schedule:
+  type: cron
+  expression: "0 3 * * 0"
+  timezone: "Europe/Paris"
+
+action:
+  type: run_skill
+  skill: cleanup.js
+  description: Purge automatique des mémoires agents selon politique de rétention
+
+output:
+  deliver_to: telegram
+  message: "🧹 Cleanup hebdomadaire terminé — voir state/cleanup-log.jsonl pour les détails"
+
+approval:
+  required: false
