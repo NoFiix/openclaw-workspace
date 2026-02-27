@@ -5,3 +5,4 @@ agents/*/memory/
 .openclaw/
 .pi
 .env
+USER.md
