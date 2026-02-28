@@ -242,4 +242,86 @@ if (require.main === module) {
   })();
 }
 
-module.exports = { postTweet, postThread };
+
+/**
+ * Upload une image vers Twitter via API v1.1
+ * @param {Buffer} imageBuffer - Buffer de l'image
+ * @param {string} mimeType - ex: "image/jpeg"
+ * @returns {object} - { success, mediaId, error }
+ */
+async function uploadMedia(imageBuffer, mimeType = "image/jpeg") {
+  const base64 = imageBuffer.toString("base64");
+  const body   = `media_data=${encodeURIComponent(base64)}&media_category=tweet_image`;
+  const url    = "https://upload.twitter.com/1.1/media/upload.json";
+  const auth   = generateOAuthHeader("POST", url);
+
+  return new Promise((resolve) => {
+    const req = https.request(url, {
+      method: "POST",
+      headers: {
+        "Authorization":  auth,
+        "Content-Type":   "application/x-www-form-urlencoded",
+        "Content-Length": Buffer.byteLength(body),
+      },
+    }, (res) => {
+      let data = "";
+      res.on("data", c => data += c);
+      res.on("end", () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.media_id_string) {
+            console.log(`[twitter] Media uploadé: ${parsed.media_id_string}`);
+            resolve({ success: true, mediaId: parsed.media_id_string });
+          } else {
+            resolve({ success: false, error: parsed });
+          }
+        } catch (e) { resolve({ success: false, error: e.message }); }
+      });
+    });
+    req.on("error", e => resolve({ success: false, error: e.message }));
+    req.write(body);
+    req.end();
+  });
+}
+
+/**
+ * Publie un tweet avec image (v2 + mediaId uploadé via v1.1)
+ * @param {string} text
+ * @param {string} mediaId - ID retourné par uploadMedia()
+ * @returns {object} - { success, tweetId, url, error }
+ */
+async function postTweetWithMedia(text, mediaId) {
+  const url  = "https://api.twitter.com/2/tweets";
+  const body = JSON.stringify({ text, media: { media_ids: [mediaId] } });
+  const auth = generateOAuthHeader("POST", url);
+
+  return new Promise((resolve) => {
+    const req = https.request(url, {
+      method: "POST",
+      headers: {
+        "Authorization":  auth,
+        "Content-Type":   "application/json",
+        "Content-Length": Buffer.byteLength(body),
+      },
+    }, (res) => {
+      let data = "";
+      res.on("data", c => data += c);
+      res.on("end", () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (res.statusCode === 201 && parsed.data?.id) {
+            resolve({ success: true, tweetId: parsed.data.id, url: `https://twitter.com/CryptoRizon/status/${parsed.data.id}` });
+          } else {
+            resolve({ success: false, error: parsed, statusCode: res.statusCode });
+          }
+        } catch (e) { resolve({ success: false, error: e.message }); }
+      });
+    });
+    req.on("error", e => resolve({ success: false, error: e.message }));
+    req.write(body);
+    req.end();
+  });
+}
+
+
+module.exports = { postTweet, postThread, uploadMedia, postTweetWithMedia };

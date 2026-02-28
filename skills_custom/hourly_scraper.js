@@ -214,6 +214,13 @@ Historiquement, ce niveau a précédé les plus grands rebonds du cycle.`;
 async function fetchArticleBody(url) {
   try {
     const html = await fetchUrl(url);
+    // Extraction og:image
+    const ogImageMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i)
+      || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i);
+    const imageUrl = ogImageMatch ? ogImageMatch[1].replace(/&amp;/g, "&") : null;
+    if (imageUrl) console.log(`[article] og:image trouvée: ${imageUrl}`);
+    else console.log(`[article] Pas d og:image`);
+    // Extraction corps texte
     const stripped = html
       .replace(/<script[\s\S]*?<\/script>/gi, "")
       .replace(/<style[\s\S]*?<\/style>/gi, "")
@@ -223,10 +230,10 @@ async function fetchArticleBody(url) {
       .replace(/<[^>]+>/g, " ")
       .replace(/\s+/g, " ").trim();
     console.log(`[article] Corps fetché: ${stripped.length} chars`);
-    return stripped.slice(0, 3000);
+    return { body: stripped.slice(0, 3000), imageUrl };
   } catch (e) {
     console.error(`[article] Impossible de fetcher: ${e.message}`);
-    return null;
+    return { body: null, imageUrl: null };
   }
 }
 
@@ -311,15 +318,33 @@ function tgRequest(method, body) {
     req.end();
   });
 }
-
-async function sendToTelegram(tweet1, tweet2) {
+async function sendToTelegram(tweet1, tweet2, imageUrl = null) {
   const hour = new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
-  const preview = `⚡ <b>POST HORAIRE ${hour} — @CryptoRizon</b>\n\n<b>Tweet 1 :</b>\n${tweet1}\n\n<b>Tweet 2 :</b>\n${tweet2}`;
+  const tweet1Preview = tweet1.length > 700 ? tweet1.slice(0, 697) + "..." : tweet1;
+  const t1 = tweet1.length > 650 ? tweet1.slice(0, 650).replace(/\n[^\n]*$/, "") : tweet1;
+  const caption = `⚡ <b>POST HORAIRE ${hour} — @CryptoRizon</b>\n\n<b>Tweet 1 :</b>\n${t1}\n\n<b>Tweet 2 :</b>\n${tweet2}`;
+  const buttons = { inline_keyboard: [[
+    { text: "✅ Publier",         callback_data: "publish"       },
+    { text: "✏️ Modifier texte",  callback_data: "modify"        },
+    { text: "🖼 Modifier image",  callback_data: "modify_image"  },
+    { text: "❌ Annuler",         callback_data: "cancel"        },
+  ]]};
+  // Si image dispo → sendPhoto avec caption
+  if (imageUrl) {
+    return tgRequest("sendPhoto", {
+      chat_id:      BUILDER_CHAT,
+      photo:        imageUrl,
+      caption,
+      parse_mode:   "HTML",
+      reply_markup: buttons,
+    });
+  }
+  // Sinon → sendMessage classique
   return tgRequest("sendMessage", {
-    chat_id: BUILDER_CHAT,
-    text: preview,
-    parse_mode: "HTML",
-    reply_markup: { inline_keyboard: [[{ text: "✅ Publier", callback_data: "publish" },{ text: "✏️ Modifier", callback_data: "modify" },{ text: "❌ Annuler", callback_data: "cancel" }]] },
+    chat_id:      BUILDER_CHAT,
+    text:         caption,
+    parse_mode:   "HTML",
+    reply_markup: buttons,
   });
 }
 
@@ -327,9 +352,9 @@ async function sendToTelegram(tweet1, tweet2) {
 // DRAFT → poller existant le gère
 // ─────────────────────────────────────────
 
-function saveDraft(tweet1, tweet2) {
+function saveDraft(tweet1, tweet2, imageUrl = null) {
   fs.mkdirSync(path.dirname(DRAFT_FILE), { recursive: true });
-  fs.writeFileSync(DRAFT_FILE, JSON.stringify({ content: tweet1, tweets: [tweet1, tweet2], type: "hourly", savedAt: new Date().toISOString() }, null, 2));
+  fs.writeFileSync(DRAFT_FILE, JSON.stringify({ content: tweet1, tweets: [tweet1, tweet2], imageUrl, type: "hourly", savedAt: new Date().toISOString() }, null, 2));
 }
 async function run() {
   const startTime = new Date().toISOString();
@@ -390,7 +415,7 @@ async function run() {
   // ── Étape 1 : Haiku sélectionne le meilleur article (cheap) ──
   const selected = await selectBestArticle(candidates);
   // ── Étape 2 : Fetch le corps de l'article ──
-  const articleBody = await fetchArticleBody(selected.link);
+  const { body: articleBody, imageUrl } = await fetchArticleBody(selected.link);
   // ── Étape 3 : Sonnet rédige le post avec le vrai contenu ──
   let post;
   try {
@@ -402,9 +427,9 @@ async function run() {
   }
   const tweet2 = `🗞 ${selected.link}`;
   saveSeen(seenEntries, selected.link);
-  saveDraft(post, tweet2);
+  saveDraft(post, tweet2, imageUrl);
   console.log("[hourly] Draft sauvegardé → current_draft.json");
-  const tgResult = await sendToTelegram(post, tweet2);
+  const tgResult = await sendToTelegram(post, tweet2, imageUrl);
   if (tgResult.ok) { console.log("[hourly] ✅ Post envoyé sur Telegram"); }
   else { console.error("[hourly] ❌ Erreur Telegram:", JSON.stringify(tgResult)); }
 }
