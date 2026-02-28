@@ -157,78 +157,123 @@ function removeSeen(articles, seenEntries) {
 // CLAUDE — sélection + rédaction (1 seul appel)
 // ─────────────────────────────────────────
 
-const SYSTEM_PROMPT = `Tu es le copywriter de CryptoRizon (@CryptoRizon sur Twitter).
-Tu rédiges des posts Twitter crypto percutants en français.
 
-STYLE — David Ogilvy, Gary Halbert, Stan Leloup :
-- Phrases ultra-courtes. Une idée par ligne. Jamais deux.
-- Rythme rapide. Tension. Accroche immédiate. Le lecteur ne peut pas s'arrêter.
-- Ton direct, proche, légèrement familier mais crédible.
-- Chaque mot compte. Zéro remplissage.
-- Maximum 1 emoji par post, jamais en début de phrase.
-- Zéro hashtag. Zéro lien dans le post.
+const SYSTEM_PROMPT = `Tu es le copywriter de CryptoRizon. Tu rédiges des posts Twitter crypto en français dans le style exact de @Crypto__Goku.
+
+RÈGLE EMOJI — commence TOUJOURS par UN seul emoji parmi :
+🚨 breaking news, hack, arrestation, alerte urgente
+⚠️ risque, fraude, arnaque, régulation hostile
+💰 levée de fonds, résultats, acquisition, business
+📉 chute de prix, liquidations, faillite, perte
+🏦 institution, banque, ETF, gouvernement, SEC/Fed
+🇺🇸🇬🇧🇨🇳🇫🇷 si l'actu concerne spécifiquement ce pays
+⚡ record battu, annonce ultra-rapide
+
+STYLE :
+- Première phrase = LE FAIT CLÉ. Chiffres précis si disponibles.
+- Paragraphes courts séparés par une ligne vide.
+- Longueur proportionnelle à l'importance :
+  • Actu mineure = 2-3 phrases
+  • Actu normale = 4-6 phrases
+  • Actu majeure = 7-10 phrases
+- Extrais UNIQUEMENT les faits du corps de l'article. Zéro invention.
+- Zéro hashtag. Zéro lien. Zéro CTA. Zéro conseil financier.
+- Zéro formule creuse ("les mains faibles", "richesse de demain", etc.)
+- NE PAS mettre la source — elle sera dans le tweet suivant.
 - Langue : français uniquement.
 
-CRITÈRES DE SÉLECTION DE L'ARTICLE :
-- Priorité à l'article mentionné par le plus de sources (signe d'intérêt général du marché)
-- Préfère les breaking news, chiffres clés, événements qui changent la donne
-- Évite le contenu trop technique ou trop niche
-- Si un titre apparaît sous plusieurs formes similaires → c'est lui qu'il faut choisir
+EXEMPLES RÉELS :
+⚠️ Tether a déjà gelé plus de 4,2 milliards de dollars d'USDT liés à des activités illicites dont 3,5 milliards depuis 2023.
 
-FORMAT DE RÉPONSE — JSON strict, rien d'autre, pas de markdown :
-{
-  "selected_index": <numéro 1-based de l'article choisi>,
-  "selected_url": "<url exacte copiée telle quelle>",
-  "post": "<post Twitter complet, max 280 caractères>"
-}`;
+Cette semaine encore, l'entreprise a aidé le ministère de la Justice américain à bloquer près de 61 millions de dollars liés à des arnaques de type pig-butchering.
 
-async function selectAndWrite(candidates) {
-  const list = candidates.map((a, i) =>
-    `${i + 1}. [${a.source}] ${a.title} — ${a.link}`
-  ).join("\n");
+Plus de 180 milliards de dollars d'USDT sont actuellement en circulation.
 
-  const userMsg = `Voici ${candidates.length} articles crypto récents.\n` +
-    `Choisis le plus pertinent/viral et rédige un post Twitter style CryptoRizon.\n\n${list}`;
+L'entreprise peut geler à distance les $USDT dans n'importe quel portefeuille, sur simple demande des autorités.
+---
+💰 Le cofondateur de Wikipédia, Jimmy Wales, estime que Bitcoin ne disparaîtra probablement pas.
 
+Selon lui, sa conception est suffisamment robuste pour durer indéfiniment, sauf en cas de faille crypto majeure ou d'attaque à 51 %.
+
+En revanche, il pense que Bitcoin échouera comme monnaie et réserve de valeur. Il pourrait valoir moins de 10 000 dollars d'ici 2050.
+
+Il considère Bitcoin comme un actif spéculatif, davantage porté par des amateurs que par une adoption massive.`;
+
+async function fetchArticleBody(url) {
+  try {
+    const html = await fetchUrl(url);
+    const stripped = html
+      .replace(/<script[\s\S]*?<\/script>/gi, "")
+      .replace(/<style[\s\S]*?<\/style>/gi, "")
+      .replace(/<nav[\s\S]*?<\/nav>/gi, "")
+      .replace(/<header[\s\S]*?<\/header>/gi, "")
+      .replace(/<footer[\s\S]*?<\/footer>/gi, "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ").trim();
+    console.log(`[article] Corps fetché: ${stripped.length} chars`);
+    return stripped.slice(0, 3000);
+  } catch (e) {
+    console.error(`[article] Impossible de fetcher: ${e.message}`);
+    return null;
+  }
+}
+
+async function selectBestArticle(candidates) {
+  const list = candidates.map((a, i) => `${i + 1}. [${a.source}] ${a.title}`).join("\n");
   const body = JSON.stringify({
-    model:      "claude-sonnet-4-6",
-    max_tokens: 500,
-    system:     SYSTEM_PROMPT,
-    messages:   [{ role: "user", content: userMsg }],
+    model: "claude-haiku-4-5-20251001", max_tokens: 80,
+    system: `Éditeur crypto. Réponds UNIQUEMENT avec JSON valide : {"index": <numéro 1-based>}. Critères : breaking news > chiffres précis > impact marché > grand public.`,
+    messages: [{ role: "user", content: `Choisis le meilleur article à tweeter :\n\n${list}` }],
   });
-
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const req = https.request({
-      hostname: "api.anthropic.com",
-      path:     "/v1/messages",
-      method:   "POST",
-      headers:  {
-        "Content-Type":      "application/json",
-        "Content-Length":    Buffer.byteLength(body),
-        "x-api-key":         ANTHROPIC_KEY,
-        "anthropic-version": "2023-06-01",
-      },
+      hostname: "api.anthropic.com", path: "/v1/messages", method: "POST",
+      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body), "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01" },
     }, (res) => {
       let raw = "";
       res.on("data", c => raw += c);
       res.on("end", () => {
         try {
-          const text    = JSON.parse(raw).content?.[0]?.text?.trim() || "";
-          const cleaned = text.replace(/```json\n?|```/g, "").trim();
-          const parsed  = JSON.parse(cleaned);
-          if (!parsed.post || !parsed.selected_url) throw new Error("Réponse Claude incomplète");
-          resolve(parsed);
-        } catch (e) {
-          reject(new Error(`Parsing Claude échoué: ${e.message}`));
-        }
+          const parsed = JSON.parse(JSON.parse(raw).content?.[0]?.text?.replace(/```json\n?|```/g, "").trim() || "{}");
+          const idx = Math.min(Math.max((parsed.index || 1) - 1, 0), candidates.length - 1);
+          console.log(`[haiku] Sélectionné #${idx+1}: "${candidates[idx].title}"`);
+          resolve(candidates[idx]);
+        } catch { console.error("[haiku] Fallback #1"); resolve(candidates[0]); }
       });
     });
-    req.on("error", reject);
-    req.write(body);
-    req.end();
+    req.on("error", () => resolve(candidates[0]));
+    req.write(body); req.end();
   });
 }
 
+async function writePost(article, bodyText) {
+  const content = bodyText
+    ? `Titre : ${article.title}\nSource : ${article.source}\n\nCorps :\n${bodyText}`
+    : `Titre : ${article.title}\nSource : ${article.source}\nRésumé : ${article.summary || ""}`;
+  const body = JSON.stringify({
+    model: "claude-sonnet-4-6", max_tokens: 600,
+    system: SYSTEM_PROMPT,
+    messages: [{ role: "user", content: `Rédige le post Twitter pour cette actu :\n\n${content}` }],
+  });
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: "api.anthropic.com", path: "/v1/messages", method: "POST",
+      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body), "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01" },
+    }, (res) => {
+      let raw = "";
+      res.on("data", c => raw += c);
+      res.on("end", () => {
+        try {
+          const text = JSON.parse(raw).content?.[0]?.text?.trim() || "";
+          if (!text) throw new Error("Réponse vide");
+          resolve(text);
+        } catch (e) { reject(new Error(`Erreur Sonnet: ${e.message}`)); }
+      });
+    });
+    req.on("error", reject);
+    req.write(body); req.end();
+  });
+}
 // ─────────────────────────────────────────
 // TELEGRAM
 // ─────────────────────────────────────────
@@ -330,26 +375,24 @@ async function run() {
       }
     }
   }
-
-  console.log(`[hourly] Candidats finaux: ${candidates.length} articles (fenêtre: ${windowUsed}h)`);
-
-  // ── Claude : sélection + rédaction (1 seul appel) ──
-  let result;
+  // ── Étape 1 : Haiku sélectionne le meilleur article (cheap) ──
+  const selected = await selectBestArticle(candidates);
+  // ── Étape 2 : Fetch le corps de l'article ──
+  const articleBody = await fetchArticleBody(selected.link);
+  // ── Étape 3 : Sonnet rédige le post avec le vrai contenu ──
+  let post;
   try {
-    result = await selectAndWrite(candidates);
-    console.log(`[hourly] Claude a sélectionné l'article #${result.selected_index}`);
-    console.log(`[hourly] URL: ${result.selected_url}`);
-    console.log(`[hourly] Post (${result.post.length} chars): ${result.post.slice(0, 80)}...`);
+    post = await writePost(selected, articleBody);
+    console.log(`[hourly] Post rédigé (${post.length} chars)`);
   } catch (e) {
-    console.error(`[hourly] ❌ Erreur Claude: ${e.message}`);
+    console.error(`[hourly] ❌ Erreur Sonnet: ${e.message}`);
     process.exit(1);
   }
-  const srcName = candidates.find(a => a.link === result.selected_url)?.source || "Source";
-  const tweet2 = `🗞 ${result.selected_url}`;
-  saveSeen(seenEntries, result.selected_url);
-  saveDraft(result.post, tweet2);
+  const tweet2 = `🗞 ${selected.link}`;
+  saveSeen(seenEntries, selected.link);
+  saveDraft(post, tweet2);
   console.log("[hourly] Draft sauvegardé → current_draft.json");
-  const tgResult = await sendToTelegram(result.post, tweet2);
+  const tgResult = await sendToTelegram(post, tweet2);
   if (tgResult.ok) { console.log("[hourly] ✅ Post envoyé sur Telegram"); }
   else { console.error("[hourly] ❌ Erreur Telegram:", JSON.stringify(tgResult)); }
 }
