@@ -14,7 +14,7 @@ const fs     = require("fs");
 const path   = require("path");
 
 const { isSelectionMessage, getSelectedArticles, clearWaitingSelection } = require("./pending");
-const { postTweet } = require("./twitter");
+const { postTweet, postThread } = require("./twitter");
 
 const WORKSPACE   = "/home/node/.openclaw/workspace";
 const OFFSET_FILE = path.join(WORKSPACE, "state", "poller_offset.json");
