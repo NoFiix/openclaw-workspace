@@ -1,3 +1,4 @@
+const { saveWaitingSelection } = require("./pending");
 /**
  * scraper.js - Skill de scraping crypto pour CryptoRizon
  * 
@@ -121,8 +122,8 @@ function deduplicate(items) {
  */
 function sendTelegram(message) {
   return new Promise((resolve) => {
-    const token  = process.env.TELEGRAM_BOT_TOKEN;
-    const chatId = process.env.TELEGRAM_CHAT_ID;
+    const token  = process.env.BUILDER_TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.BUILDER_TELEGRAM_CHAT_ID;
 
     if (!token || !chatId) {
       console.log("[telegram] Variables manquantes, skip");
@@ -272,6 +273,7 @@ async function runScraper() {
 
   await sendTelegram(lines.join("\n"));
   console.log(`[telegram] Notification envoyée`);
+  saveWaitingSelection(items);
 
   return { items, errors };
 }

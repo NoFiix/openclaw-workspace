@@ -210,3 +210,17 @@ The goal: Be helpful without being annoying. Check in a few times a day, do usef
 ## Make It Yours
 
 This is a starting point. Add your own conventions, style, and rules as you figure out what works.
+
+## 🔢 Détection de sélection d'articles
+
+Si le message reçu contient **uniquement des chiffres** séparés par des espaces ou virgules (ex: "1 3 5" ou "1,3,5"), c'est une sélection d'articles pour le copywriter CryptoRizon.
+
+Action immédiate — sans demander de confirmation :
+1. Lire `workspace/state/waiting_selection.json`
+2. Extraire les articles aux indices sélectionnés (1-based)
+3. Pour chaque article sélectionné, rédiger un post Twitter dans le style CryptoRizon
+4. Suivre les règles de `agents/copywriter/AGENTS.md`
+5. Envoyer le draft sur Telegram pour validation
+6. Supprimer `waiting_selection.json` après traitement
+
+Ne jamais répondre "je ne comprends pas ces chiffres" si `waiting_selection.json` existe.

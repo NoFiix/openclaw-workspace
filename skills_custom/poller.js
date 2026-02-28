@@ -1,0 +1,353 @@
+/**
+ * poller.js v2 - Workflow complet Publisher → Draft → Validation → Twitter
+ *
+ * Tout se passe dans la conv Publisher :
+ * 1. Tu envoies tes numéros → Claude génère le thread
+ * 2. Draft + boutons [✅ Publier] [✏️ Modifier] [❌ Annuler]
+ * 3a. Publier → postTweet() sur @CryptoRizon (post unique Premium)
+ * 3b. Modifier → tu expliques → nouveau draft + boutons
+ * 3c. Annuler → fin
+ */
+
+const https  = require("https");
+const fs     = require("fs");
+const path   = require("path");
+
+const { isSelectionMessage, getSelectedArticles, clearWaitingSelection } = require("./pending");
+const { postTweet } = require("./twitter");
+
+const WORKSPACE   = "/home/node/.openclaw/workspace";
+const OFFSET_FILE = path.join(WORKSPACE, "state", "poller_offset.json");
+const DRAFT_FILE  = path.join(WORKSPACE, "state", "current_draft.json");
+
+const BUILDER_TOKEN = process.env.BUILDER_TELEGRAM_BOT_TOKEN;
+const BUILDER_CHAT  = process.env.BUILDER_TELEGRAM_CHAT_ID;
+const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
+
+// ---------- État modification en cours ----------
+let waitingModification = false;
+
+// ---------- Telegram ----------
+function tgRequest(token, method, body) {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify(body);
+    const req = https.request({
+      hostname: "api.telegram.org",
+      path:     `/bot${token}/${method}`,
+      method:   "POST",
+      headers:  {
+        "Content-Type":   "application/json",
+        "Content-Length": Buffer.byteLength(data),
+      },
+    }, (res) => {
+      let raw = "";
+      res.on("data", c => raw += c);
+      res.on("end", () => { try { resolve(JSON.parse(raw)); } catch { resolve({}); } });
+    });
+    req.on("error", reject);
+    req.write(data);
+    req.end();
+  });
+}
+
+function sendMessage(text, replyMarkup = null) {
+  const body = {
+    chat_id:    BUILDER_CHAT,
+    text,
+    parse_mode: "HTML",
+  };
+  if (replyMarkup) body.reply_markup = replyMarkup;
+  return tgRequest(BUILDER_TOKEN, "sendMessage", body);
+}
+
+function answerCallback(callbackQueryId, text) {
+  return tgRequest(BUILDER_TOKEN, "answerCallbackQuery", {
+    callback_query_id: callbackQueryId,
+    text,
+    show_alert: false,
+  });
+}
+
+function getUpdates(offset) {
+  return tgRequest(BUILDER_TOKEN, "getUpdates", {
+    offset,
+    timeout:         2,
+    allowed_updates: ["message", "callback_query"],
+  });
+}
+
+// ---------- Offset ----------
+function getOffset() {
+  try { return JSON.parse(fs.readFileSync(OFFSET_FILE, "utf8")).offset || 0; }
+  catch { return 0; }
+}
+function saveOffset(offset) {
+  fs.writeFileSync(OFFSET_FILE, JSON.stringify({ offset }));
+}
+
+// ---------- Draft persistance ----------
+function saveDraft(content) {
+  fs.writeFileSync(DRAFT_FILE, JSON.stringify({ content, savedAt: new Date().toISOString() }));
+}
+function loadDraft() {
+  try { return JSON.parse(fs.readFileSync(DRAFT_FILE, "utf8")); }
+  catch { return null; }
+}
+function clearDraft() {
+  try { if (fs.existsSync(DRAFT_FILE)) fs.unlinkSync(DRAFT_FILE); } catch {}
+}
+
+// ---------- Boutons validation ----------
+const VALIDATION_BUTTONS = {
+  inline_keyboard: [[
+    { text: "✅ Publier",  callback_data: "publish" },
+    { text: "✏️ Modifier", callback_data: "modify"  },
+    { text: "❌ Annuler",  callback_data: "cancel"  },
+  ]],
+};
+
+// ---------- Claude Sonnet ----------
+async function callClaude(system, user) {
+  const body = JSON.stringify({
+    model:      "claude-sonnet-4-6",
+    max_tokens: 1500,
+    system,
+    messages:   [{ role: "user", content: user }],
+  });
+
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: "api.anthropic.com",
+      path:     "/v1/messages",
+      method:   "POST",
+      headers:  {
+        "Content-Type":      "application/json",
+        "Content-Length":    Buffer.byteLength(body),
+        "x-api-key":         ANTHROPIC_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+    }, (res) => {
+      let raw = "";
+      res.on("data", c => raw += c);
+      res.on("end", () => {
+        try { resolve(JSON.parse(raw).content?.[0]?.text?.trim() || ""); }
+        catch { reject(new Error("Erreur parsing Claude")); }
+      });
+    });
+    req.on("error", reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+const COPYWRITER_SYSTEM = `Tu es le copywriter de CryptoRizon. Tu rédiges des threads Twitter crypto en français.
+
+STYLE — David Ogilvy, Gary Halbert, Stan Leloup, Antoine BM :
+- Phrases ultra-courtes. Une idée par ligne. Jamais deux.
+- Rythme rapide. Tension. Le lecteur ne peut pas s'arrêter.
+- Ton direct, proche, légèrement familier mais crédible.
+- Jamais de remplissage. Chaque mot compte.
+- Langue : français uniquement.
+- Maximum 1 emoji par tweet, jamais en début de phrase.
+- Zéro hashtag. Zéro lien dans les tweets.
+
+STRUCTURE :
+Ligne 1-2 = INTRO FIXE (copie exactement, remplace uniquement [X] par le nombre d'actus retenues) :
+🗞️ Le briefing Web3 du jour :
+Les [X] actus majeures des dernières 24h
+
+Ensuite = maximum 5 actus. Si tu reçois plus de 5 articles, choisis les plus pertinents pour les lecteurs crypto. Si tu en reçois moins de 5, garde-les tous.
+Format de chaque actus :
+[numéro]/[total] [contenu en un seul bloc continu, sans saut de ligne interne]
+
+Exemple :
+1/5\nParadigm lève 1,5 milliard de dollars. Le fonds s'ouvre à l'IA et la robotique. Selon le WSJ, c'est leur plus gros véhicule à ce jour.
+
+RÈGLES :
+- POST ENTIER = 2000 caractères MAXIMUM. Vise 1500.
+- Chaque actus = 1 seul bloc de texte, sans retour à la ligne interne.
+- On saute une ligne uniquement entre deux actus.
+- 2-3 phrases max par actus. Un fait + une implication. Pas plus.
+- Mentionne la source naturellement (ex : "Selon Bloomberg...").
+- Extraire uniquement les faits. Jamais copier les formulations sources.
+- Factuel. Zéro conseil financier. Zéro promesse de gain.
+- Zéro CTA à la fin. On termine sur la dernière actus.
+- Rien d'autre. Pas d'introduction. Pas de commentaire autour du post.
+`;
+
+async function generatePost(selected) {
+  const articlesText = selected.map((a, i) =>
+    `${i + 1}. ${a.title} (${a.source})`
+  ).join("\n");
+
+  const user = `Voici les ${selected.length} articles sélectionnés.\nRédige un thread Twitter percutant dans le style CryptoRizon.\n\n${articlesText}`;
+
+  return callClaude(COPYWRITER_SYSTEM, user);
+}
+
+async function modifyPost(currentThread, instructions) {
+  const user = `Voici le thread actuel :\n\n${currentThread}\n\nInstructions de modification de Daniel :\n${instructions}\n\nRédige la version corrigée en gardant le même style CryptoRizon.`;
+  return callClaude(COPYWRITER_SYSTEM, user);
+}
+
+// ---------- Parse tweets ----------
+function parseTweets(threadText) {
+  // Supprimer la numérotation générée par Claude (ex: "1/8", "2/8")
+  return threadText
+    .split(/\n\s*\n/)
+    .map(t => t.trim().replace(/^\d+\/\d+\s*/gm, "").trim())
+    .filter(t => t.length > 0 && t.length <= 280);
+}
+
+// ---------- Envoi draft ----------
+async function sendDraft(content) {
+
+  saveDraft(content);
+  const msg = `✍️ <b>DRAFT — @CryptoRizon</b>\n\n${content}`;
+
+  await sendMessage(msg, VALIDATION_BUTTONS);
+}
+
+// ---------- Handlers ----------
+async function handleSelection(text) {
+  const result = getSelectedArticles(text);
+
+  if (!result) {
+    await sendMessage("⚠️ Aucune liste en attente. Lance d'abord le scraper.");
+    return;
+  }
+
+  const { selected } = result;
+  await sendMessage(`⏳ Génération du thread pour ${selected.length} articles...`);
+
+  try {
+    const thread = await generatePost(selected);
+    clearWaitingSelection();
+    await sendDraft(thread);
+    console.log(`[poller] Draft généré — ${selected.length} articles`);
+  } catch (e) {
+    console.error("[poller] Erreur génération:", e.message);
+    await sendMessage(`❌ Erreur : ${e.message}`);
+  }
+}
+
+async function handlePublish() {
+  const draft = loadDraft();
+  if (!draft) {
+    await sendMessage("❌ Aucun draft en attente.");
+    return;
+  }
+
+  await sendMessage("🚀 Publication en cours sur @CryptoRizon...");
+
+  const result = await postTweet(draft.content);
+  
+  
+
+  if (result.success) {
+    
+    await sendMessage(
+      `✅ Post publié !
+🔗 ${result.url}`
+    );
+    clearDraft();
+  } else {
+    await sendMessage(`❌ Échec publication.
+${JSON.stringify(result.error)}`);
+  }
+}
+
+async function handleModify() {
+  waitingModification = true;
+  await sendMessage("✏️ Dis-moi ce que tu veux modifier :");
+}
+
+async function handleModificationInstructions(instructions) {
+  waitingModification = false;
+  const draft = loadDraft();
+
+  if (!draft) {
+    await sendMessage("❌ Aucun draft en attente.");
+    return;
+  }
+
+  await sendMessage("⏳ Modification en cours...");
+
+  try {
+    const currentThread = draft.content;
+    const newThread = await modifyPost(currentThread, instructions);
+    await sendDraft(newThread);
+    console.log("[poller] Thread modifié");
+  } catch (e) {
+    console.error("[poller] Erreur modification:", e.message);
+    await sendMessage(`❌ Erreur : ${e.message}`);
+  }
+}
+
+async function handleCancel() {
+  clearDraft();
+  clearWaitingSelection();
+  waitingModification = false;
+  await sendMessage("❌ Draft annulé.");
+}
+
+// ---------- Boucle principale ----------
+async function pollLoop() {
+  console.log("[poller] v2 démarré — conv CryptoRizon Publisher");
+
+  if (!BUILDER_TOKEN || !BUILDER_CHAT) {
+    console.error("[poller] Variables BUILDER manquantes");
+    process.exit(1);
+  }
+
+  let offset = getOffset();
+
+  while (true) {
+    try {
+      const response = await getUpdates(offset);
+      const updates  = response.result || [];
+
+      for (const update of updates) {
+        offset = update.update_id + 1;
+        saveOffset(offset);
+
+        // Boutons
+        if (update.callback_query) {
+          const cq     = update.callback_query;
+          const chatId = String(cq.message?.chat?.id || "");
+          if (chatId !== String(BUILDER_CHAT)) continue;
+
+          await answerCallback(cq.id, "");
+
+          if      (cq.data === "publish") await handlePublish();
+          else if (cq.data === "modify")  await handleModify();
+          else if (cq.data === "cancel")  await handleCancel();
+          continue;
+        }
+
+        // Messages
+        const msg  = update.message;
+        if (!msg) continue;
+
+        const text = (msg.text || "").trim();
+        const from = String(msg.chat?.id || "");
+        if (from !== String(BUILDER_CHAT)) continue;
+
+        console.log(`[poller] Message: "${text}"`);
+
+        if (waitingModification) {
+          await handleModificationInstructions(text);
+        } else if (isSelectionMessage(text)) {
+          await handleSelection(text);
+        }
+      }
+
+    } catch (e) {
+      console.error("[poller] Erreur:", e.message);
+    }
+
+    await new Promise(r => setTimeout(r, 2000));
+  }
+}
+
+pollLoop();

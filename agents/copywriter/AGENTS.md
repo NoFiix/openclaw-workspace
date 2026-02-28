@@ -27,3 +27,9 @@
 - Ce qu'il a aimé
 - Ce qu'il a refusé et pourquoi
 - Ajuster le style en conséquence
+
+## Détection sélection automatique
+Si le message reçu contient uniquement des chiffres séparés par des espaces ou virgules (ex: "1 2 4" ou "1,2,4"), c'est une sélection d'articles. Dans ce cas :
+1. Charger workspace/state/waiting_selection.json
+2. Extraire les articles aux indices correspondants
+3. Rédiger les posts sans demander confirmation de compréhension

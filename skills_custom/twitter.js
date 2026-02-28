@@ -76,8 +76,8 @@ async function postTweet(text) {
   if (!text || text.length === 0) {
     return { success: false, error: "Tweet vide" };
   }
-  if (text.length > 280) {
-    return { success: false, error: `Tweet trop long: ${text.length} chars (max 280)` };
+  if (text.length > 25000) {
+    return { success: false, error: `Tweet trop long: ${text.length} chars (max 25000)` };
   }
 
   const url    = "https://api.twitter.com/2/tweets";
@@ -136,7 +136,7 @@ async function postThread(tweets) {
   for (let i = 0; i < tweets.length; i++) {
     const text = tweets[i];
 
-    if (text.length > 280) {
+    if (text.length > 25000) {
       results.push({ success: false, error: `Tweet ${i+1} trop long: ${text.length} chars` });
       break;
     }
