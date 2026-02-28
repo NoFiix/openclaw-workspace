@@ -3,7 +3,7 @@ enabled: false
 
 schedule:
   type: daily
-  time: "19:00"
+  time: "19:15"
   timezone: "Europe/Paris"
 
 sources:

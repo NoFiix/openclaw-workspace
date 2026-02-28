@@ -233,27 +233,21 @@ async function handleSelection(text) {
 
 async function handlePublish() {
   const draft = loadDraft();
-  if (!draft) {
-    await sendMessage("❌ Aucun draft en attente.");
-    return;
-  }
-
+  if (!draft) { await sendMessage("❌ Aucun draft en attente."); return; }
   await sendMessage("🚀 Publication en cours sur @CryptoRizon...");
-
-  const result = await postTweet(draft.content);
-  
-  
-
-  if (result.success) {
-    
-    await sendMessage(
-      `✅ Post publié !
-🔗 ${result.url}`
-    );
-    clearDraft();
+  if (Array.isArray(draft.tweets) && draft.tweets.length > 1) {
+    const results = await postThread(draft.tweets);
+    const allOk = results.every(r => r.success);
+    if (allOk) {
+      await sendMessage(`✅ Thread publié !\n🔗 ${results[0].url}`);
+      clearDraft();
+    } else {
+      await sendMessage(`❌ Échec.\n${results.filter(r => !r.success).map(r => JSON.stringify(r.error)).join("\n")}`);
+    }
   } else {
-    await sendMessage(`❌ Échec publication.
-${JSON.stringify(result.error)}`);
+    const result = await postTweet(draft.content);
+    if (result.success) { await sendMessage(`✅ Post publié !\n🔗 ${result.url}`); clearDraft(); }
+    else { await sendMessage(`❌ Échec.\n${JSON.stringify(result.error)}`); }
   }
 }
 
