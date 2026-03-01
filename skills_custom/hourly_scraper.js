@@ -27,8 +27,8 @@ const SEEN_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 const SOURCES = [
   { name: "CoinTelegraph", url: "https://cointelegraph.com/rss",                          lang: "EN" },
   { name: "CoinDesk",      url: "https://www.coindesk.com/arc/outboundfeeds/rss",         lang: "EN" },
-  { name: "The Block",     url: "https://www.theblock.co/rss.xml",                        lang: "EN" },
-  { name: "Decrypt",       url: "https://decrypt.co/feed",                                lang: "EN" },
+  { name: "Bitcoin Magazine", url: "https://bitcoinmagazine.com/feed",              lang: "EN" },
+  { name: "The Defiant",      url: "https://thedefiant.io/api/feed",             lang: "EN" },
   { name: "Cryptoast",     url: "https://cryptoast.fr/feed/",                             lang: "FR" },
   { name: "JournalDuCoin", url: "https://journalducoin.com/feed/",                        lang: "FR" },
 ];
@@ -241,7 +241,7 @@ async function selectBestArticle(candidates) {
   const list = candidates.map((a, i) => `${i + 1}. [${a.source}] ${a.title}`).join("\n");
   const body = JSON.stringify({
     model: "claude-haiku-4-5-20251001", max_tokens: 80,
-    system: `Éditeur crypto. Réponds UNIQUEMENT avec JSON valide : {"index": <numéro 1-based>}. Critères : breaking news > chiffres précis > impact marché > grand public.`,
+    system: `Éditeur crypto. Réponds UNIQUEMENT avec JSON valide : {"index": <numéro 1-based>}. Critères : breaking news > impact marché > grand public > chiffres précis.`,
     messages: [{ role: "user", content: `Choisis le meilleur article à tweeter :\n\n${list}` }],
   });
   return new Promise((resolve) => {

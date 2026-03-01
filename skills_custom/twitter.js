@@ -125,7 +125,7 @@ async function postTweet(text) {
  * @param {string[]} tweets - Array de tweets dans l'ordre
  * @returns {object[]} - Résultats de chaque tweet
  */
-async function postThread(tweets) {
+async function postThread(tweets, mediaId = null) {
   if (!Array.isArray(tweets) || tweets.length === 0) {
     return [{ success: false, error: "Thread vide" }];
   }
@@ -144,7 +144,7 @@ async function postThread(tweets) {
     const url  = "https://api.twitter.com/2/tweets";
     const bodyObj = replyToId
       ? { text, reply: { in_reply_to_tweet_id: replyToId } }
-      : { text };
+      : (i === 0 && mediaId ? { text, media: { media_ids: [mediaId] } } : { text });
     const body = JSON.stringify(bodyObj);
     const auth = generateOAuthHeader("POST", url);
 
@@ -251,9 +251,9 @@ if (require.main === module) {
  */
 async function uploadMedia(imageBuffer, mimeType = "image/jpeg") {
   const base64 = imageBuffer.toString("base64");
-  const body   = `media_data=${encodeURIComponent(base64)}&media_category=tweet_image`;
   const url    = "https://upload.twitter.com/1.1/media/upload.json";
-  const auth   = generateOAuthHeader("POST", url);
+  const body   = `media_data=${encodeURIComponent(base64)}`;
+  const auth   = generateOAuthHeader("POST", url, { media_data: base64 });
 
   return new Promise((resolve) => {
     const req = https.request(url, {

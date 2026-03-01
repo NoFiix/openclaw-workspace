@@ -14,7 +14,7 @@ const fs     = require("fs");
 const path   = require("path");
 
 const { isSelectionMessage, getSelectedArticles, clearWaitingSelection } = require("./pending");
-const { postTweet, postThread } = require("./twitter");
+const { postTweet, postThread, uploadMedia, postTweetWithMedia } = require("./twitter");
 
 const WORKSPACE   = "/home/node/.openclaw/workspace";
 const OFFSET_FILE = path.join(WORKSPACE, "state", "poller_offset.json");
@@ -86,8 +86,11 @@ function saveOffset(offset) {
 }
 
 // ---------- Draft persistance ----------
-function saveDraft(content) {
-  fs.writeFileSync(DRAFT_FILE, JSON.stringify({ content, savedAt: new Date().toISOString() }));
+function saveDraft(content, imageUrl = null) {
+  const draft = loadDraft();
+  const existingImageUrl = imageUrl || (draft && draft.imageUrl) || null;
+  const existingTweets = (draft && draft.tweets && draft.tweets.length > 1) ? draft.tweets : [content];
+  fs.writeFileSync(DRAFT_FILE, JSON.stringify({ content, imageUrl: existingImageUrl, tweets: existingTweets, savedAt: new Date().toISOString() }));
 }
 function loadDraft() {
   try { return JSON.parse(fs.readFileSync(DRAFT_FILE, "utf8")); }
@@ -101,7 +104,8 @@ function clearDraft() {
 const VALIDATION_BUTTONS = {
   inline_keyboard: [[
     { text: "✅ Publier",  callback_data: "publish" },
-    { text: "✏️ Modifier", callback_data: "modify"  },
+    { text: "✏️ Modifier texte", callback_data: "modify" },
+    { text: "🖼 Modifier image", callback_data: "modify_image" },
     { text: "❌ Annuler",  callback_data: "cancel"  },
   ]],
 };
@@ -199,13 +203,18 @@ function parseTweets(threadText) {
     .filter(t => t.length > 0 && t.length <= 280);
 }
 
-// ---------- Envoi draft ----------
-async function sendDraft(content) {
-
-  saveDraft(content);
+async function sendDraft(content, imageUrl = null) {
+  saveDraft(content, imageUrl);
+  const draft = loadDraft();
+  const img = imageUrl || (draft && draft.imageUrl) || null;
   const msg = `✍️ <b>DRAFT — @CryptoRizon</b>\n\n${content}`;
-
-  await sendMessage(msg, VALIDATION_BUTTONS);
+  if (img) {
+    const t = content.length > 800 ? content.slice(0, 800).replace(/\n[^\n]*$/, "") : content;
+    const caption = `✍️ <b>DRAFT — @CryptoRizon</b>\n\n${t}`;
+    await tgRequest(BUILDER_TOKEN, "sendPhoto", { chat_id: BUILDER_CHAT, photo: img, caption, parse_mode: "HTML", reply_markup: VALIDATION_BUTTONS });
+  } else {
+    await sendMessage(msg, VALIDATION_BUTTONS);
+  }
 }
 
 // ---------- Handlers ----------
@@ -230,27 +239,45 @@ async function handleSelection(text) {
     await sendMessage(`❌ Erreur : ${e.message}`);
   }
 }
-
 async function handlePublish() {
   const draft = loadDraft();
   if (!draft) { await sendMessage("❌ Aucun draft en attente."); return; }
   await sendMessage("🚀 Publication en cours sur @CryptoRizon...");
+
+  // Upload image si disponible
+  let mediaId = null;
+  if (draft.imageUrl) {
+    try {
+      const client = draft.imageUrl.startsWith("https") ? require("https") : require("http");
+      const imageBuffer = await new Promise((resolve, reject) => {
+        client.get(draft.imageUrl, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
+          const chunks = [];
+          res.on("data", c => chunks.push(c));
+          res.on("end", () => resolve(Buffer.concat(chunks)));
+        }).on("error", reject);
+      });
+      const ext = draft.imageUrl.split("?")[0].split(".").pop().toLowerCase();
+      const mime = ext === "png" ? "image/png" : ext === "gif" ? "image/gif" : "image/jpeg";
+      const uploaded = await uploadMedia(imageBuffer, mime);
+      if (uploaded.success) { mediaId = uploaded.mediaId; console.log(`[poller] Image uploadée: ${mediaId}`); }
+      else { console.error("[poller] Échec upload image:", JSON.stringify(uploaded.error)); }
+    } catch (e) { console.error("[poller] Erreur image:", e.message); }
+  }
+
+  // Publication thread (tweet1 + tweet2 source)
   if (Array.isArray(draft.tweets) && draft.tweets.length > 1) {
-    const results = await postThread(draft.tweets);
+    const results = await postThread(draft.tweets, mediaId);
     const allOk = results.every(r => r.success);
-    if (allOk) {
-      await sendMessage(`✅ Thread publié !\n🔗 ${results[0].url}`);
-      clearDraft();
-    } else {
-      await sendMessage(`❌ Échec.\n${results.filter(r => !r.success).map(r => JSON.stringify(r.error)).join("\n")}`);
-    }
+    if (allOk) { await sendMessage(`✅ Thread publié !\n🔗 ${results[0].url}`); clearDraft(); }
+    else { await sendMessage(`❌ Échec.\n${results.filter(r => !r.success).map(r => JSON.stringify(r.error)).join("\n")}`); }
   } else {
-    const result = await postTweet(draft.content);
+    const result = mediaId
+      ? await postTweetWithMedia(draft.content, mediaId)
+      : await postTweet(draft.content);
     if (result.success) { await sendMessage(`✅ Post publié !\n🔗 ${result.url}`); clearDraft(); }
     else { await sendMessage(`❌ Échec.\n${JSON.stringify(result.error)}`); }
   }
 }
-
 async function handleModify() {
   waitingModification = true;
   await sendMessage("✏️ Dis-moi ce que tu veux modifier :");
@@ -278,6 +305,39 @@ async function handleModificationInstructions(instructions) {
   }
 }
 
+async function handleModifyImage() {
+  const draft = loadDraft();
+  if (!draft) { await sendMessage("❌ Aucun draft en attente."); return; }
+  await sendMessage("⏳ Recherche d'une nouvelle image...");
+  // Tentative 1 : 2ème image de l'article original
+  try {
+    const https = require("https");
+    const http  = require("http");
+    const tweet2 = draft.tweets ? draft.tweets[1] : "";
+    const articleUrl = tweet2.replace("🗞 ", "").trim();
+    const client = articleUrl.startsWith("https") ? https : http;
+    const html = await new Promise((resolve, reject) => {
+      client.get(articleUrl, { headers: { "User-Agent": "Mozilla/5.0" }, timeout: 8000 }, (res) => {
+        let data = ""; res.on("data", c => data += c); res.on("end", () => resolve(data));
+      }).on("error", reject);
+    });
+    // Cherche toutes les og:image ou <img src>
+    const ogMatches = [...html.matchAll(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/gi)];
+    const imgMatches = [...html.matchAll(/<img[^>]*src=["']([^"']+\.(?:jpg|jpeg|png|webp)[^"']*)["']/gi)];
+    const currentImg = draft.imageUrl || "";
+    const allImages = [...ogMatches.map(m => m[1]), ...imgMatches.map(m => m[1])]
+      .map(u => u.replace(/&amp;/g, "&"))
+      .filter(u => u.startsWith("http") && u !== currentImg);
+    if (allImages.length > 0) {
+      const newImg = allImages[0];
+      console.log(`[poller] Nouvelle image: ${newImg}`);
+      await sendDraft(draft.content, newImg);
+      return;
+    }
+  } catch (e) { console.error("[poller] Erreur fetch image:", e.message); }
+  // Tentative 2 : demander upload manuel
+  await sendMessage("⚠️ Aucune autre image trouvée automatiquement.\n\nEnvoie-moi une image directement ici et je l'utiliserai.");
+}
 async function handleCancel() {
   clearDraft();
   clearWaitingSelection();
@@ -316,6 +376,7 @@ async function pollLoop() {
           if      (cq.data === "publish") await handlePublish();
           else if (cq.data === "modify")  await handleModify();
           else if (cq.data === "cancel")  await handleCancel();
+          else if (cq.data === "modify_image") await handleModifyImage();
           continue;
         }
 
