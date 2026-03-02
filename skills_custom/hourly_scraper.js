@@ -171,11 +171,14 @@ STRUCTURE OBLIGATOIRE :
 - Ligne 1 = UNE SEULE phrase courte et impactante qui résume toute l actu.
 - Ensuite = détails factuels, un paragraphe par idée, séparés par une ligne vide.
 
-LONGUEUR — sois strict :
-- Actu mineure = 200 caractères MAX (1-2 phrases)
-- Actu normale = 800 caractères MAX (3-4 phrases)
-- Actu majeure = 1300 caractères MAX (5-6 phrases)
-- RÈGLE ABSOLUE : compte tes caractères avant de répondre. Si tu dépasses, coupe.
+LONGUEUR — règle unique et absolue :
+- 500 caractères MAX pour tous les posts, sans exception.
+- 3-4 phrases maximum. Une idée par ligne. Zéro remplissage.
+- RÈGLE ABSOLUE : si tu dépasses 500 caractères, supprime la dernière idée complète jusqu'à rentrer dans la limite. Ne coupe jamais une phrase en plein milieu.
+- EXEMPLE de post à 600 chars MAX (à ne pas dépasser) :
+⚡️ Bitcoin remonte à 68 000 $ après la mort de Khamenei confirmée.
+Le mouvement de 64K$ à 68K$ s'est produit en quelques heures sur liquidité réduite — 80 milliards récupérés en un seul titre.
+Les traders parient sur une désescalade avec un vide de pouvoir à Téhéran. La réaction des marchés pétroliers dira si l'optimisme tient
 
 RÈGLES :
 - Extrais UNIQUEMENT les faits du corps de l article. Zéro invention.
@@ -318,11 +321,11 @@ function tgRequest(method, body) {
     req.end();
   });
 }
-async function sendToTelegram(tweet1, tweet2, imageUrl = null) {
+async function sendToTelegram(post, articleUrl, sourceName, imageUrl = null) {
   const hour = new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
-  const tweet1Preview = tweet1.length > 700 ? tweet1.slice(0, 697) + "..." : tweet1;
-  const t1 = tweet1.length > 650 ? tweet1.slice(0, 650).replace(/\n[^\n]*$/, "") : tweet1;
-  const caption = `⚡ <b>POST HORAIRE ${hour} — @CryptoRizon</b>\n\n<b>Tweet 1 :</b>\n${t1}\n\n<b>Tweet 2 :</b>\n${tweet2}`;
+  
+  const t1 = post.length > 650 ? post.slice(0, 650).replace(/\n[^\n]*$/, "") : post;
+  const caption = `⚡ <b>POST HORAIRE ${hour} — @CryptoRizon</b>\n\n${t1}\n\n🗞 ${articleUrl}\n\n- ${sourceName}`;
   const buttons = { inline_keyboard: [[
     { text: "✅ Publier",         callback_data: "publish"       },
     { text: "✏️ Modifier texte",  callback_data: "modify"        },
@@ -352,9 +355,9 @@ async function sendToTelegram(tweet1, tweet2, imageUrl = null) {
 // DRAFT → poller existant le gère
 // ─────────────────────────────────────────
 
-function saveDraft(tweet1, tweet2, imageUrl = null) {
+function saveDraft(post, articleUrl, sourceName, imageUrl = null) {
   fs.mkdirSync(path.dirname(DRAFT_FILE), { recursive: true });
-  fs.writeFileSync(DRAFT_FILE, JSON.stringify({ content: tweet1, tweets: [tweet1, tweet2], imageUrl, type: "hourly", savedAt: new Date().toISOString() }, null, 2));
+  fs.writeFileSync(DRAFT_FILE, JSON.stringify({ content: `${post}\n\n- ${sourceName}`, articleUrl, sourceName, imageUrl, type: "hourly", savedAt: new Date().toISOString() }, null, 2));
 }
 async function run() {
   const startTime = new Date().toISOString();
@@ -425,11 +428,11 @@ async function run() {
     console.error(`[hourly] ❌ Erreur Sonnet: ${e.message}`);
     process.exit(1);
   }
-  const tweet2 = `🗞 ${selected.link}`;
+  const sourceName = selected.source;
   saveSeen(seenEntries, selected.link);
-  saveDraft(post, tweet2, imageUrl);
+  saveDraft(post, selected.link, sourceName, imageUrl);
   console.log("[hourly] Draft sauvegardé → current_draft.json");
-  const tgResult = await sendToTelegram(post, tweet2, imageUrl);
+  const tgResult = await sendToTelegram(post, selected.link, sourceName, imageUrl);
   if (tgResult.ok) { console.log("[hourly] ✅ Post envoyé sur Telegram"); }
   else { console.error("[hourly] ❌ Erreur Telegram:", JSON.stringify(tgResult)); }
 }

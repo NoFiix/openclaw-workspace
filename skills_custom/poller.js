@@ -18,11 +18,13 @@ const { postTweet, postThread, uploadMedia, postTweetWithMedia } = require("./tw
 
 const WORKSPACE   = "/home/node/.openclaw/workspace";
 const OFFSET_FILE = path.join(WORKSPACE, "state", "poller_offset.json");
-const DRAFT_FILE  = path.join(WORKSPACE, "state", "current_draft.json");
+const DRAFT_FILE       = path.join(WORKSPACE, "state", "current_draft.json");
+const DAILY_DRAFT_FILE = path.join(WORKSPACE, "state", "daily_draft.json");
 
 const BUILDER_TOKEN = process.env.BUILDER_TELEGRAM_BOT_TOKEN;
 const BUILDER_CHAT  = process.env.BUILDER_TELEGRAM_CHAT_ID;
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
+const CHANNEL_ID    = process.env.CRYPTORIZON_CHANNEL_ID;
 
 // ---------- État modification en cours ----------
 let waitingModification = false;
@@ -99,6 +101,23 @@ function loadDraft() {
 function clearDraft() {
   try { if (fs.existsSync(DRAFT_FILE)) fs.unlinkSync(DRAFT_FILE); } catch {}
 }
+function saveDailyDraft(content, imageUrl = null) {
+  fs.writeFileSync(DAILY_DRAFT_FILE, JSON.stringify({ content, imageUrl, tweets: [content], type: "daily", savedAt: new Date().toISOString() }));
+}
+function loadDailyDraft() {
+  try { return JSON.parse(fs.readFileSync(DAILY_DRAFT_FILE, "utf8")); }
+  catch { return null; }
+}
+function clearDailyDraft() {
+  try { if (fs.existsSync(DAILY_DRAFT_FILE)) fs.unlinkSync(DAILY_DRAFT_FILE); } catch {}
+}
+function getActiveDraft() {
+  const hourly = loadDraft();
+  if (hourly) return { draft: hourly, type: "hourly" };
+  const daily = loadDailyDraft();
+  if (daily) return { draft: daily, type: "daily" };
+  return { draft: null, type: null };
+}
 
 // ---------- Boutons validation ----------
 const VALIDATION_BUTTONS = {
@@ -144,6 +163,7 @@ async function callClaude(system, user) {
   });
 }
 
+const HOURLY_SYSTEM = `Tu es le copywriter de CryptoRizon. Tu rédiges des posts Twitter crypto en français dans le style @Crypto__Goku. Phrases courtes, ton direct, une idée par ligne. Zéro hashtag. Zéro lien. Langue : français uniquement.`;
 const COPYWRITER_SYSTEM = `Tu es le copywriter de CryptoRizon. Tu rédiges des threads Twitter crypto en français.
 
 STYLE — David Ogilvy, Gary Halbert, Stan Leloup, Antoine BM :
@@ -186,12 +206,13 @@ async function generatePost(selected) {
 
   const user = `Voici les ${selected.length} articles sélectionnés.\nRédige un thread Twitter percutant dans le style CryptoRizon.\n\n${articlesText}`;
 
-  return callClaude(COPYWRITER_SYSTEM, user);
+  return callClaude(type === "daily" ? COPYWRITER_SYSTEM : HOURLY_SYSTEM, user);
 }
 
-async function modifyPost(currentThread, instructions) {
-  const user = `Voici le thread actuel :\n\n${currentThread}\n\nInstructions de modification de Daniel :\n${instructions}\n\nRédige la version corrigée en gardant le même style CryptoRizon.`;
-  return callClaude(COPYWRITER_SYSTEM, user);
+async function modifyPost(currentThread, instructions, articleBody = null, type = "hourly") {
+  const context = articleBody ? `\n\nArticle original :\n${articleBody}` : "";
+  const user = `Voici le post actuel :\n\n${currentThread}${context}\n\nInstructions de Daniel :\n${instructions}\n\nRédige la version corrigée en gardant le même style CryptoRizon.`;
+  return callClaude(type === "daily" ? COPYWRITER_SYSTEM : HOURLY_SYSTEM, user);
 }
 
 // ---------- Parse tweets ----------
@@ -232,15 +253,58 @@ async function handleSelection(text) {
   try {
     const thread = await generatePost(selected);
     clearWaitingSelection();
-    await sendDraft(thread);
+    saveDailyDraft(thread);
+    const msg = `✍️ <b>DRAFT JOURNALIER — @CryptoRizon</b>\n\n${thread.slice(0, 800)}`;
+    await sendMessage(msg, VALIDATION_BUTTONS);
     console.log(`[poller] Draft généré — ${selected.length} articles`);
   } catch (e) {
     console.error("[poller] Erreur génération:", e.message);
     await sendMessage(`❌ Erreur : ${e.message}`);
   }
 }
+
+async function publishToChannel(draft) {
+  if (!CHANNEL_ID) { console.error("[canal] CRYPTORIZON_CHANNEL_ID manquant"); return; }
+  try {
+    // Extraire le nom de la source depuis tweet2 (ex: "🗞 https://cointelegraph.com/...")
+    const tweet2 = (draft.tweets && draft.tweets[1]) || "";
+    const url = tweet2.replace("🗞 ", "").trim();
+    const sourceMap = {
+      "cointelegraph.com":   "CoinTelegraph",
+      "coindesk.com":        "CoinDesk",
+      "bitcoinmagazine.com": "Bitcoin Magazine",
+      "thedefiant.io":       "The Defiant",
+      "cryptoast.fr":        "Cryptoast",
+      "journalducoin.com":   "Journal du Coin",
+    };
+    let sourceName = "CryptoRizon";
+    for (const [domain, name] of Object.entries(sourceMap)) {
+      if (url.includes(domain)) { sourceName = name; break; }
+    }
+    const text = `${draft.content}\n\n- ${sourceName}`;
+    if (draft.imageUrl) {
+      const t = text.length > 1024 ? text.slice(0, 1020) + "..." : text;
+      await tgRequest(BUILDER_TOKEN, "sendPhoto", {
+        chat_id:    CHANNEL_ID,
+        photo:      draft.imageUrl,
+        caption:    t,
+        parse_mode: "HTML",
+      });
+    } else {
+      await tgRequest(BUILDER_TOKEN, "sendMessage", {
+        chat_id:    CHANNEL_ID,
+        text,
+        parse_mode: "HTML",
+      });
+    }
+    console.log(`[canal] ✅ Publié sur @CryptoRizon canal`);
+  } catch (e) {
+    console.error("[canal] Erreur:", e.message);
+  }
+}
+
 async function handlePublish() {
-  const draft = loadDraft();
+  const { draft, type } = getActiveDraft();
   if (!draft) { await sendMessage("❌ Aucun draft en attente."); return; }
   await sendMessage("🚀 Publication en cours sur @CryptoRizon...");
 
@@ -263,19 +327,16 @@ async function handlePublish() {
       else { console.error("[poller] Échec upload image:", JSON.stringify(uploaded.error)); }
     } catch (e) { console.error("[poller] Erreur image:", e.message); }
   }
-
-  // Publication thread (tweet1 + tweet2 source)
-  if (Array.isArray(draft.tweets) && draft.tweets.length > 1) {
-    const results = await postThread(draft.tweets, mediaId);
-    const allOk = results.every(r => r.success);
-    if (allOk) { await sendMessage(`✅ Thread publié !\n🔗 ${results[0].url}`); clearDraft(); }
-    else { await sendMessage(`❌ Échec.\n${results.filter(r => !r.success).map(r => JSON.stringify(r.error)).join("\n")}`); }
+  // Publication tweet unique avec image si dispo
+  const result = mediaId
+    ? await postTweetWithMedia(draft.content, mediaId)
+    : await postTweet(draft.content);
+  if (result.success) {
+    await sendMessage(`✅ Publié !\n🔗 ${result.url}`);
+    await publishToChannel(draft);
+    type === "daily" ? clearDailyDraft() : clearDraft();
   } else {
-    const result = mediaId
-      ? await postTweetWithMedia(draft.content, mediaId)
-      : await postTweet(draft.content);
-    if (result.success) { await sendMessage(`✅ Post publié !\n🔗 ${result.url}`); clearDraft(); }
-    else { await sendMessage(`❌ Échec.\n${JSON.stringify(result.error)}`); }
+    await sendMessage(`❌ Échec.\n${JSON.stringify(result.error)}`);
   }
 }
 async function handleModify() {
@@ -285,19 +346,38 @@ async function handleModify() {
 
 async function handleModificationInstructions(instructions) {
   waitingModification = false;
-  const draft = loadDraft();
-
-  if (!draft) {
-    await sendMessage("❌ Aucun draft en attente.");
-    return;
-  }
-
+  const { draft, type } = getActiveDraft();
+  if (!draft) { await sendMessage("❌ Aucun draft en attente."); return; }
   await sendMessage("⏳ Modification en cours...");
-
   try {
-    const currentThread = draft.content;
-    const newThread = await modifyPost(currentThread, instructions);
-    await sendDraft(newThread);
+    // Re-scraper l'article si l'URL est disponible
+    let articleBody = null;
+    if (draft.articleUrl) {
+      try {
+        const client = draft.articleUrl.startsWith("https") ? require("https") : require("http");
+        const html = await new Promise((resolve, reject) => {
+          client.get(draft.articleUrl, { headers: { "User-Agent": "Mozilla/5.0" }, timeout: 8000 }, (res) => {
+            let data = ""; res.on("data", c => data += c); res.on("end", () => resolve(data));
+          }).on("error", reject);
+        });
+        articleBody = html
+          .replace(/<script[\s\S]*?<\/script>/gi, "")
+          .replace(/<style[\s\S]*?<\/style>/gi, "")
+          .replace(/<nav[\s\S]*?<\/nav>/gi, "")
+          .replace(/<header[\s\S]*?<\/header>/gi, "")
+          .replace(/<footer[\s\S]*?<\/footer>/gi, "")
+          .replace(/<[^>]+>/g, " ")
+          .replace(/\s+/g, " ").trim().slice(0, 3000);
+        console.log(`[poller] Article re-fetché: ${articleBody.length} chars`);
+      } catch (e) { console.error("[poller] Impossible de re-fetcher l'article:", e.message); }
+    }
+    const newThread = await modifyPost(draft.content, instructions, articleBody, type);
+    if (type === "daily") {
+      saveDailyDraft(newThread);
+      await sendMessage(`✍️ <b>DRAFT JOURNALIER — @CryptoRizon</b>\n\n${newThread.slice(0, 800)}`, VALIDATION_BUTTONS);
+    } else {
+      await sendDraft(newThread);
+    }
     console.log("[poller] Thread modifié");
   } catch (e) {
     console.error("[poller] Erreur modification:", e.message);
@@ -306,7 +386,7 @@ async function handleModificationInstructions(instructions) {
 }
 
 async function handleModifyImage() {
-  const draft = loadDraft();
+  const { draft, type } = getActiveDraft();
   if (!draft) { await sendMessage("❌ Aucun draft en attente."); return; }
   await sendMessage("⏳ Recherche d'une nouvelle image...");
   // Tentative 1 : 2ème image de l'article original
@@ -339,7 +419,7 @@ async function handleModifyImage() {
   await sendMessage("⚠️ Aucune autre image trouvée automatiquement.\n\nEnvoie-moi une image directement ici et je l'utiliserai.");
 }
 async function handleCancel() {
-  clearDraft();
+  clearDraft(); clearDailyDraft();
   clearWaitingSelection();
   waitingModification = false;
   await sendMessage("❌ Draft annulé.");
