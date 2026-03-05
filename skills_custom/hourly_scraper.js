@@ -52,6 +52,7 @@ function saveSeen(currentEntries, newUrl) {
   purged.push({ url: newUrl, seenAt: new Date().toISOString() });
   fs.mkdirSync(path.dirname(SEEN_FILE), { recursive: true });
   fs.writeFileSync(SEEN_FILE, JSON.stringify({ urls: purged }, null, 2));
+  try { fs.chmodSync(SEEN_FILE, 0o664); } catch {}
   console.log(`[seen] +1 URL enregistrée (total: ${purged.length})`);
 }
 

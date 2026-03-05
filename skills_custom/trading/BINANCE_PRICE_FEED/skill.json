@@ -1,0 +1,8 @@
+{
+  "id": "trading.BINANCE_PRICE_FEED",
+  "name": "BINANCE_PRICE_FEED",
+  "entrypoint": "index.js",
+  "description": "Ingère prix et OHLCV Binance via REST. Émet ticker + ohlcv events. Aucun LLM.",
+  "permissions": { "net": true, "fs_state_read": true, "fs_state_write": true },
+  "env": ["TRADING_ENV", "EVENTBUS_BACKEND", "STATE_DIR", "WORKSPACE_DIR"]
+}

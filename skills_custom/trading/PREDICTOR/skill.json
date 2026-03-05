@@ -1,0 +1,8 @@
+{
+  "id": "trading.PREDICTOR",
+  "name": "PREDICTOR",
+  "entrypoint": "index.js",
+  "description": "Scoring directionnel pondéré (RSI+BB+Volume+MACD). Niveau A statistique pure. Aucun LLM.",
+  "permissions": { "net": false, "fs_state_read": true, "fs_state_write": true },
+  "env": ["TRADING_ENV", "STATE_DIR", "WORKSPACE_DIR"]
+}
