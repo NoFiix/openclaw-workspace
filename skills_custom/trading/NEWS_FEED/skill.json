@@ -1,0 +1,8 @@
+{
+  "id": "trading.NEWS_FEED",
+  "name": "NEWS_FEED",
+  "entrypoint": "index.js",
+  "description": "Scrape Nitter RSS (5 instances) + CryptoPanic. Déduplication hash. Aucun LLM.",
+  "permissions": { "net": true, "fs_state_read": true, "fs_state_write": true },
+  "env": ["TRADING_ENV", "STATE_DIR", "WORKSPACE_DIR"]
+}
