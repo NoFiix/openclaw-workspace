@@ -1,0 +1,8 @@
+{
+  "id": "trading.KILL_SWITCH_GUARDIAN",
+  "name": "KILL_SWITCH_GUARDIAN",
+  "entrypoint": "index.js",
+  "description": "Surveille les conditions d'arrêt automatique. Alerte Telegram si TRIPPED. Aucun LLM.",
+  "permissions": { "net": true, "fs_state_read": true, "fs_state_write": true },
+  "env": ["TRADING_ENV", "STATE_DIR", "TRADER_TELEGRAM_BOT_TOKEN", "TRADER_TELEGRAM_CHAT_ID", "TRADING_MAX_HOT_WALLET_USD"]
+}
