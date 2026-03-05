@@ -1,14 +1,5 @@
 /**
  * poller.js v3 - Workflow Publisher → Draft → Validation → Twitter
- *
- * Tout se passe dans la conv Builder :
- * 1. Tu envoies tes numéros → Claude génère le post journalier
- * 2. Draft + boutons [✅ Publier] [✏️ Modifier texte] [🖼 Modifier image] [❌ Annuler]
- * 3a. Publier → postTweet() sur @CryptoRizon
- * 3b. Modifier → tu expliques → nouveau draft + boutons
- * 3c. Annuler → supprime le draft
- *
- * Les drafts horaires sont créés par hourly_scraper.js (même système)
  */
 
 const https = require("https");
@@ -17,7 +8,7 @@ const path  = require("path");
 
 const { isSelectionMessage, getSelectedArticles, clearWaitingSelection } = require("./pending");
 const { postTweet, uploadMedia, postTweetWithMedia }                     = require("./twitter");
-const { createDraft, getDraft, updateDraft, deleteDraft, sendDraft, tgRequest } = require("./drafts");
+const { createDraft, getDraft, updateDraft, deleteDraft, sendDraft, tgRequest, loadDrafts } = require("./drafts");
 
 const WORKSPACE   = "/home/node/.openclaw/workspace";
 const STATE_DIR   = path.join(WORKSPACE, "state");
@@ -98,6 +89,8 @@ async function callClaude(system, user) {
   });
 }
 
+const HOURLY_SYSTEM = `Tu es le copywriter de CryptoRizon. Tu rédiges des posts Twitter crypto en français dans le style @Crypto__Goku. Phrases courtes, ton direct, une idée par ligne. Zéro hashtag. Zéro lien. NE PAS mettre la source. Langue : français uniquement. 500 caractères MAX.`;
+
 const COPYWRITER_SYSTEM = `Tu es le copywriter de CryptoRizon. Tu rédiges des threads Twitter crypto en français.
 
 STYLE — David Ogilvy, Gary Halbert, Stan Leloup, Antoine BM :
@@ -135,10 +128,31 @@ async function generatePost(selected) {
   return callClaude(COPYWRITER_SYSTEM, user);
 }
 
-async function modifyPost(currentContent, instructions, articleBody = null) {
+async function modifyPost(currentContent, instructions, articleBody = null, type = "daily") {
   const context = articleBody ? `\n\nArticle original :\n${articleBody}` : "";
   const user = `Voici le post actuel :\n\n${currentContent}${context}\n\nInstructions de Daniel :\n${instructions}\n\nRédige la version corrigée en gardant le même style CryptoRizon.`;
-  return callClaude(COPYWRITER_SYSTEM, user);
+  return callClaude(type === "hourly" ? HOURLY_SYSTEM : COPYWRITER_SYSTEM, user);
+}
+
+// ============================================================
+// RÉSOLUTION IMAGE (file_id Telegram ou URL http)
+// ============================================================
+
+async function resolveImageBuffer(imageUrl) {
+  if (!imageUrl.startsWith("http")) {
+    const res = await tgRequest("getFile", { file_id: imageUrl });
+    const filePath = res.result?.file_path;
+    if (!filePath) throw new Error("getFile échoué");
+    imageUrl = `https://api.telegram.org/file/bot${BUILDER_TOKEN}/${filePath}`;
+  }
+  const client = imageUrl.startsWith("https") ? require("https") : require("http");
+  return new Promise((resolve, reject) => {
+    client.get(imageUrl, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
+      const chunks = [];
+      res.on("data", c => chunks.push(c));
+      res.on("end", () => resolve(Buffer.concat(chunks)));
+    }).on("error", reject);
+  });
 }
 
 // ============================================================
@@ -167,24 +181,6 @@ async function handleSelection(text) {
   }
 }
 
-async function resolveImageBuffer(imageUrl) {
-  // Si c'est un file_id Telegram (pas une URL http)
-  if (!imageUrl.startsWith("http")) {
-    const res = await tgRequest("getFile", { file_id: imageUrl });
-    const filePath = res.result?.file_path;
-    if (!filePath) throw new Error("getFile échoué");
-    imageUrl = `https://api.telegram.org/file/bot${BUILDER_TOKEN}/${filePath}`;
-  }
-  const client = imageUrl.startsWith("https") ? require("https") : require("http");
-  return new Promise((resolve, reject) => {
-    client.get(imageUrl, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
-      const chunks = [];
-      res.on("data", c => chunks.push(c));
-      res.on("end", () => resolve(Buffer.concat(chunks)));
-    }).on("error", reject);
-  });
-}
-
 async function handlePublish(id) {
   const draft = getDraft(id);
   if (!draft) { await sendMessage(`❌ Draft ${id} introuvable ou expiré.`); return; }
@@ -195,7 +191,9 @@ async function handlePublish(id) {
   if (draft.imageUrl) {
     try {
       const imageBuffer = await resolveImageBuffer(draft.imageUrl);
-      const ext  = draft.imageUrl.split("?")[0].split(".").pop().toLowerCase();
+      const ext  = draft.imageUrl.startsWith("http")
+        ? draft.imageUrl.split("?")[0].split(".").pop().toLowerCase()
+        : "jpeg";
       const mime = ext === "png" ? "image/png" : ext === "gif" ? "image/gif" : "image/jpeg";
       const uploaded = await uploadMedia(imageBuffer, mime);
       if (uploaded.success) { mediaId = uploaded.mediaId; }
@@ -250,7 +248,7 @@ async function handleModificationInstructions(instructions) {
       } catch (e) { console.error("[poller] Impossible de re-fetcher:", e.message); }
     }
 
-    const newContent = await modifyPost(draft.content, instructions, articleBody);
+    const newContent = await modifyPost(draft.content, instructions, articleBody, draft.type);
     updateDraft(id, { content: newContent });
     await sendDraft(id);
     console.log(`[poller] Draft ${id} modifié`);
@@ -307,7 +305,7 @@ async function handleCancel(id) {
 async function publishToChannel(draft) {
   if (!CHANNEL_ID) { console.error("[canal] CRYPTORIZON_CHANNEL_ID manquant"); return; }
   try {
-    const text = draft.content; // contient déjà "- NomSource" si post horaire
+    const text = draft.content;
     if (draft.imageUrl) {
       const t = text.length > 1024 ? text.slice(0, 1020) + "..." : text;
       await tgRequest("sendPhoto", { chat_id: CHANNEL_ID, photo: draft.imageUrl, caption: t, parse_mode: "HTML" });
@@ -381,7 +379,6 @@ async function pollLoop() {
 
         if (msg.photo) {
           const photoId = msg.photo[msg.photo.length - 1].file_id;
-          const { loadDrafts, updateDraft } = require("./drafts");
           const ids = Object.keys(loadDrafts());
           if (ids.length === 0) {
             await sendMessage("❌ Aucun draft en attente.");
