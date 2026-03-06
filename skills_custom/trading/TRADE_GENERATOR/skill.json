@@ -1,0 +1,8 @@
+{
+  "id": "trading.TRADE_GENERATOR",
+  "name": "TRADE_GENERATOR",
+  "entrypoint": "index.js",
+  "description": "Génère des TradeProposal via Claude Haiku. Lit features 1m/1h/4h + régime + killswitch. Anti-spam cooldown 30min/asset.",
+  "permissions": { "net": true, "fs_state_read": true, "fs_state_write": true },
+  "env": ["TRADING_ENV", "STATE_DIR", "ANTHROPIC_API_KEY"]
+}
