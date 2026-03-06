@@ -11,7 +11,7 @@ import path from "path";
 
 const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
 const MODEL         = "claude-haiku-4-5-20251001";
-const MAX_TOKENS    = 1000;
+const MAX_TOKENS    = 600;
 const TIMEOUT_MS    = 20000;
 const SYMBOLS       = ["BTCUSDT", "ETHUSDT", "BNBUSDT"];
 const COOLDOWN_MS   = 30 * 60 * 1000; // 30 minutes par asset
@@ -22,6 +22,25 @@ function getLastEvent(bus, topic, filterFn, limit = 5000) {
   const { events } = bus.readSince(topic, 0, limit);
   const filtered   = events.filter(filterFn);
   return filtered.length > 0 ? filtered[filtered.length - 1] : null;
+}
+
+
+function getRecentNews(bus, symbol, maxAge_ms = 2 * 60 * 60 * 1000) {
+  const { events } = bus.readSince("trading.intel.news.event", 0, 500);
+  const now        = Date.now();
+  return events
+    .filter(e => {
+      const age       = now - (e.ts ?? e.event_id ?? 0);
+      const entities  = e.payload?.entities ?? [];
+      const ticker    = symbol.replace("USDT", "");
+      const relevant  = entities.length === 0
+        || entities.includes(ticker)
+        || entities.includes("BTC")   // BTC news = macro, toujours pertinent
+        || entities.includes("MARKET");
+      return relevant && age < maxAge_ms;
+    })
+    .map(e => e.payload)
+    .slice(-5); // max 5 news récentes
 }
 
 function getFeatures(bus, symbol, timeframe) {
@@ -64,7 +83,7 @@ Réponds UNIQUEMENT en JSON valide. Aucun texte avant ou après.`;
   }
 }
 
-function buildUserPrompt(symbol, f1m, f1h, f4h, regime) {
+function buildUserPrompt(symbol, f1m, f1h, f4h, regime, recentNews = []) {
   return `Analyse les données suivantes et génère une TradeProposal pour ${symbol}.
 
 ## Régime de marché
@@ -97,6 +116,21 @@ function buildUserPrompt(symbol, f1m, f1h, f4h, regime) {
 - Trend_strength: ${f4h?.trend_strength ?? "N/A"} (positif=haussier, négatif=baissier)
 - ATR_14: ${f4h?.atr_14 ?? "N/A"}
 
+
+## News récentes (dernières 2h)
+${recentNews.length === 0
+  ? "Aucune news récente significative"
+  : recentNews.map(n =>
+      `- [${n.category}] urgency=${n.urgency} fiab=${n.reliability?.score} | ${n.headline?.slice(0,100)}`
+    ).join("\n")
+}
+
+## Signal NewsTrading
+${recentNews.some(n => n.urgency >= 8 && n.reliability?.score >= 0.7)
+  ? "⚡ NEWS CRITIQUE DÉTECTÉE — considérer strategy=NewsTrading si concordant avec les indicateurs"
+  : "Pas de news critique dans la fenêtre"
+}
+
 ## Règles ABSOLUES
 - Si régime = PANIC → side = "HOLD" obligatoire
 - Si confidence < 0.5 → side = "HOLD"
@@ -104,7 +138,6 @@ function buildUserPrompt(symbol, f1m, f1h, f4h, regime) {
 - Stop-loss OBLIGATOIRE si side != "HOLD"
 - Risk/reward minimum: 2.0
 - Jamais de leverage
-- confidence doit être un nombre décimal complet ex: 0.3 ou 0.7 jamais "0."
 
 ## Format de réponse JSON
 {
@@ -203,6 +236,7 @@ export async function handler(ctx) {
 
   ctx.log(`📊 Régime: ${regime.regime} (conf=${regime.confidence})`);
 
+
   // Soul TRADE_GENERATOR
   const soulPath = path.join(
     ctx.stateDir.replace("/state/trading", ""),
@@ -235,7 +269,8 @@ export async function handler(ctx) {
     ctx.log(`🤔 ${symbol}: génération proposal...`);
 
     try {
-      const userPrompt = buildUserPrompt(symbol, f1m, f1h, f4h, regime);
+      const recentNews = getRecentNews(ctx.bus, symbol);
+      const userPrompt = buildUserPrompt(symbol, f1m, f1h, f4h, regime, recentNews);
       const raw        = await callHaiku(apiKey, systemPrompt, userPrompt);
 
       if (!raw) { ctx.log(`⚠️ ${symbol}: réponse vide Haiku`); continue; }
@@ -243,10 +278,7 @@ export async function handler(ctx) {
       // Parse JSON
       let proposal;
       try {
-        const clean = raw.replace(/```json|```/g, "").trim()
-          .replace(/:\s*0\./g, ': 0.0')   // fix "0." invalide
-          .replace(/,\s*}/g, '}')           // fix trailing comma
-          .replace(/,\s*]/g, ']');          // fix trailing comma array
+        const clean = raw.replace(/```json|```/g, "").trim();
         proposal    = JSON.parse(clean);
       } catch {
         ctx.log(`⚠️ ${symbol}: JSON invalide — ${raw.slice(0, 100)}`);
