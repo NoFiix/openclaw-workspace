@@ -22,7 +22,7 @@ const RETENTION = {
   // ── Layer 1 — Live (décisions temps réel) ─────────────────────────────
   "trading_intel_price_feed":           1  * DAY,   // 24h — tick brut inutile après
   "trading_raw_market_ticker":          1  * DAY,   // 24h
-  "trading_raw_market_ohlcv":           1  * DAY,   // 24h — remplacé par ohlcv structuré
+  "trading_raw_market_ohlcv":           0.25 * DAY,   // 24h — remplacé par ohlcv structuré
   "trading_intel_market_features":      3  * DAY,   // 72h — debug + comparaison hier/aujourd'hui
   "trading_exec_position_snapshot":     30 * DAY,   // 30j — snapshots positions
 

@@ -69,13 +69,13 @@ export async function handler(ctx) {
         }
       );
 
-      // — OHLCV event
-      ctx.emit(
-        "trading.raw.market.ohlcv",
-        "raw.market.ohlcv.v1",
-        { asset: symbol, timeframe: "1m" },
-        { symbol, interval: "1m", candles: ohlcv }
-      );
+      // — OHLCV event DÉSACTIVÉ (200MB/jour pour rien — MARKET_EYE fetch directement Binance)
+      // ctx.emit(
+      //   "trading.raw.market.ohlcv",
+      //   "raw.market.ohlcv.v1",
+      //   { asset: symbol, timeframe: "1m" },
+      //   { symbol, interval: "1m", candles: ohlcv }
+      // );
 
       ctx.log(
         `${symbol} price=${ticker.lastPrice} ` +
