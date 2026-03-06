@@ -1,0 +1,8 @@
+{
+  "id": "trading.TRADING_PUBLISHER",
+  "name": "TRADING_PUBLISHER",
+  "entrypoint": "index.js",
+  "description": "Publie les positions, clôtures et recap journalier sur Telegram. Style CryptoRizon. Phase 2: Twitter.",
+  "permissions": { "net": true, "fs_state_read": true, "fs_state_write": true },
+  "env": ["TRADING_ENV", "STATE_DIR", "TRADER_TELEGRAM_BOT_TOKEN", "TRADER_TELEGRAM_CHAT_ID", "ANTHROPIC_API_KEY"]
+}
