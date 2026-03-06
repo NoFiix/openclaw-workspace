@@ -1,11 +1,44 @@
 /**
- * MARKET_EYE — Handler
- * Calcule les indicateurs techniques sur les données OHLCV.
- * Émet : trading.intel.market.features
+ * MARKET_EYE v2 — Handler
+ * Calcule les indicateurs techniques sur 3 timeframes : 1m, 1h, 4h
+ * Émet : trading.intel.market.features (un event par symbol par timeframe)
  * Pas de LLM. Pure maths.
  */
 
-// ─── Indicateurs techniques ────────────────────────────────────────────────
+const BINANCE_BASE = "https://api.binance.com";
+const SYMBOLS      = ["BTCUSDT", "ETHUSDT", "BNBUSDT"];
+const TIMEFRAMES   = [
+  { interval: "1m",  limit: 100, label: "1m"  },
+  { interval: "1h",  limit: 100, label: "1h"  },
+  { interval: "4h",  limit: 100, label: "4h"  },
+];
+const TIMEOUT_MS   = 8000;
+
+// ─── Fetch ─────────────────────────────────────────────────────────────────
+
+async function fetchOHLCV(symbol, interval, limit) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const url = `${BINANCE_BASE}/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const raw = await res.json();
+    return raw.map(k => ({
+      open_time:  k[0],
+      open:       parseFloat(k[1]),
+      high:       parseFloat(k[2]),
+      low:        parseFloat(k[3]),
+      close:      parseFloat(k[4]),
+      volume:     parseFloat(k[5]),
+      close_time: k[6],
+    }));
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ─── Indicateurs ──────────────────────────────────────────────────────────
 
 function calcRSI(closes, period = 14) {
   if (closes.length < period + 1) return null;
@@ -14,11 +47,10 @@ function calcRSI(closes, period = 14) {
     const diff = closes[i] - closes[i - 1];
     if (diff > 0) gains += diff; else losses -= diff;
   }
-  let avgGain = gains / period;
-  let avgLoss = losses / period;
+  const avgGain = gains / period;
+  const avgLoss = losses / period;
   if (avgLoss === 0) return 100;
-  const rs = avgGain / avgLoss;
-  return parseFloat((100 - 100 / (1 + rs)).toFixed(2));
+  return parseFloat((100 - 100 / (1 + avgGain / avgLoss)).toFixed(2));
 }
 
 function calcEMA(values, period) {
@@ -35,10 +67,11 @@ function calcBollinger(closes, period = 20, mult = 2) {
   const mid   = slice.reduce((a, b) => a + b, 0) / period;
   const std   = Math.sqrt(slice.reduce((a, b) => a + Math.pow(b - mid, 2), 0) / period);
   return {
-    upper: parseFloat((mid + mult * std).toFixed(2)),
-    mid:   parseFloat(mid.toFixed(2)),
-    lower: parseFloat((mid - mult * std).toFixed(2)),
-    std:   parseFloat(std.toFixed(4)),
+    upper: parseFloat((mid + mult * std).toFixed(4)),
+    mid:   parseFloat(mid.toFixed(4)),
+    lower: parseFloat((mid - mult * std).toFixed(4)),
+    std:   parseFloat(std.toFixed(6)),
+    pct_b: parseFloat(((closes[closes.length-1] - (mid - mult*std)) / (2 * mult * std)).toFixed(3)),
   };
 }
 
@@ -50,23 +83,18 @@ function calcATR(candles, period = 14) {
     const prevClose = candles[i - 1].close;
     trs.push(Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose)));
   }
-  const atr = trs.slice(-period).reduce((a, b) => a + b, 0) / period;
-  return parseFloat(atr.toFixed(4));
+  return parseFloat((trs.slice(-period).reduce((a, b) => a + b, 0) / period).toFixed(6));
 }
 
 function calcMACD(closes, fast = 12, slow = 26, signal = 9) {
   if (closes.length < slow + signal) return null;
-  const emaFast = calcEMA(closes, fast);
-  const emaSlow = calcEMA(closes, slow);
-  if (emaFast === null || emaSlow === null) return null;
-  const macdLine = emaFast - emaSlow;
-  // Signal = EMA(9) du MACD — approximation sur les N derniers points
   const macdValues = [];
   for (let i = slow; i <= closes.length; i++) {
     const ef = calcEMA(closes.slice(0, i), fast);
     const es = calcEMA(closes.slice(0, i), slow);
     if (ef !== null && es !== null) macdValues.push(ef - es);
   }
+  const macdLine   = macdValues[macdValues.length - 1];
   const signalLine = calcEMA(macdValues, signal) ?? macdLine;
   return {
     macd:      parseFloat(macdLine.toFixed(6)),
@@ -87,77 +115,86 @@ function calcVolumeZScore(volumes, period = 20) {
 function calcReturns(closes) {
   if (closes.length < 2) return null;
   const last = closes[closes.length - 1];
-  const get  = (n) => closes.length >= n ? (last - closes[closes.length - n]) / closes[closes.length - n] : null;
-  return {
-    "1m":  get(2),
-    "5m":  get(6),
-    "15m": get(16),
-    "1h":  get(61),
-  };
+  const pct  = (n) => closes.length >= n
+    ? parseFloat(((last - closes[closes.length - n]) / closes[closes.length - n] * 100).toFixed(4))
+    : null;
+  return { "1":  pct(2), "5":  pct(6), "15": pct(16), "60": pct(61) };
 }
 
-// ─── Handler ───────────────────────────────────────────────────────────────
+// Trend strength via slope EMA20 vs EMA50
+function calcTrendStrength(closes) {
+  if (closes.length < 50) return null;
+  const ema20 = calcEMA(closes, 20);
+  const ema50 = calcEMA(closes, 50);
+  if (ema20 === null || ema50 === null) return null;
+  const pct = (ema20 - ema50) / ema50 * 100;
+  return parseFloat(pct.toFixed(4));
+}
 
-const SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT"];
+// ─── Handler ──────────────────────────────────────────────────────────────
 
 export async function handler(ctx) {
   for (const symbol of SYMBOLS) {
-    const cursorKey = `ohlcv_${symbol}`;
-    const cursor    = ctx.state.cursors[cursorKey] ?? 0;
-    const { events, nextCursor } = ctx.bus.readSince("trading.raw.market.ohlcv", cursor, 20);
+    for (const tf of TIMEFRAMES) {
+      try {
+        const candles = await fetchOHLCV(symbol, tf.interval, tf.limit);
+        if (!candles || candles.length < 30) {
+          ctx.log(`${symbol}/${tf.label}: pas assez de bougies (${candles?.length ?? 0}), skip`);
+          continue;
+        }
 
-    const symbolEvents = events.filter(e => e.payload?.symbol === symbol);
-    if (symbolEvents.length === 0) continue;
-    ctx.state.cursors[cursorKey] = nextCursor;
+        const closes  = candles.map(c => c.close);
+        const volumes = candles.map(c => c.volume);
+        const price   = closes[closes.length - 1];
 
-    const candles = symbolEvents[symbolEvents.length - 1].payload.candles;
-    if (!candles || candles.length < 30) {
-      ctx.log(`${symbol}: pas assez de bougies (${candles?.length ?? 0}), skip`);
-      continue;
+        const rsi     = calcRSI(closes, 14);
+        const bb      = calcBollinger(closes, 20, 2);
+        const atr     = calcATR(candles, 14);
+        const macd    = calcMACD(closes);
+        const volZ    = calcVolumeZScore(volumes, 20);
+        const returns = calcReturns(closes);
+        const trend   = calcTrendStrength(closes);
+
+        const features = {
+          symbol,
+          timeframe:      tf.label,
+          price:          parseFloat(price.toFixed(4)),
+          returns,
+          rsi_14:         rsi,
+          bb_upper:       bb?.upper       ?? null,
+          bb_lower:       bb?.lower       ?? null,
+          bb_mid:         bb?.mid         ?? null,
+          bb_std:         bb?.std         ?? null,
+          bb_pct_b:       bb?.pct_b       ?? null,
+          atr_14:         atr,
+          macd:           macd?.macd      ?? null,
+          macd_signal:    macd?.signal    ?? null,
+          macd_histogram: macd?.histogram ?? null,
+          volume_zscore:  volZ,
+          trend_strength: trend,
+          candles_used:   candles.length,
+        };
+
+        ctx.emit(
+          "trading.intel.market.features",
+          "intel.market.features.v2",
+          { asset: symbol, timeframe: tf.label },
+          features
+        );
+
+        ctx.log(
+          `${symbol}/${tf.label} price=${price.toFixed(2)} ` +
+          `RSI=${rsi ?? "?"} ` +
+          `BB_pctB=${bb?.pct_b ?? "?"} ` +
+          `ATR=${atr ?? "?"} ` +
+          `MACD=${macd?.histogram?.toFixed(4) ?? "?"} ` +
+          `volZ=${volZ ?? "?"} ` +
+          `trend=${trend ?? "?"}`
+        );
+
+      } catch (e) {
+        ctx.log(`⚠️ ${symbol}/${tf.label}: ${e.message}`);
+      }
     }
-
-    const closes  = candles.map(c => c.close);
-    const volumes = candles.map(c => c.volume);
-    const price   = closes[closes.length - 1];
-
-    const rsi      = calcRSI(closes, 14);
-    const bb       = calcBollinger(closes, 20, 2);
-    const atr      = calcATR(candles, 14);
-    const macd     = calcMACD(closes);
-    const volZ     = calcVolumeZScore(volumes, 20);
-    const returns  = calcReturns(closes);
-
-    const features = {
-      symbol,
-      price:          parseFloat(price.toFixed(2)),
-      returns,
-      rsi_14:         rsi,
-      bb_upper:       bb?.upper  ?? null,
-      bb_lower:       bb?.lower  ?? null,
-      bb_mid:         bb?.mid    ?? null,
-      bb_std:         bb?.std    ?? null,
-      atr_14:         atr,
-      macd:           macd?.macd      ?? null,
-      macd_signal:    macd?.signal    ?? null,
-      macd_histogram: macd?.histogram ?? null,
-      volume_zscore:  volZ,
-      candles_used:   candles.length,
-    };
-
-    ctx.emit(
-      "trading.intel.market.features",
-      "intel.market.features.v1",
-      { asset: symbol, timeframe: "1m" },
-      features
-    );
-
-    ctx.log(
-      `${symbol} price=${price.toFixed(2)} ` +
-      `RSI=${rsi ?? "?"} ` +
-      `BB=[${bb?.lower ?? "?"},${bb?.upper ?? "?"}] ` +
-      `ATR=${atr ?? "?"} ` +
-      `MACD=${macd?.macd?.toFixed(2) ?? "?"} ` +
-      `volZ=${volZ ?? "?"}`
-    );
   }
 }
