@@ -1,10 +1,8 @@
 /**
- * TRADING_PUBLISHER — Handler
- * Surveille les positions et events importants.
- * Envoie des messages Telegram formatés style CryptoRizon.
- * Phase 1 : Telegram uniquement.
- * Phase 2 : Twitter (à connecter quand le compte est créé).
- * Pas de LLM pour les messages simples. Haiku pour les messages riches.
+ * TRADING_PUBLISHER v3 — Handler
+ * Formats inspirés du "CryptoRizon AI Trading Desk"
+ * Templates fixes + Haiku uniquement pour la ligne Setup (économie tokens)
+ * Types : position_open, position_close, daily_recap, weekly_recap, viral, educational
  */
 
 import fs   from "fs";
@@ -12,7 +10,6 @@ import path from "path";
 
 const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
 const MODEL         = "claude-haiku-4-5-20251001";
-const MAX_TOKENS    = 400;
 const TIMEOUT_MS    = 15000;
 
 // ─── Telegram ────────────────────────────────────────────────────────────
@@ -22,11 +19,7 @@ async function sendTelegram(token, chatId, text) {
     const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id:    chatId,
-        text,
-        parse_mode: "Markdown",
-      }),
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: "Markdown" }),
     });
     if (!res.ok) throw new Error(`Telegram HTTP ${res.status}`);
     return true;
@@ -36,40 +29,33 @@ async function sendTelegram(token, chatId, text) {
   }
 }
 
-// ─── Haiku pour messages riches ───────────────────────────────────────────
+// ─── Haiku — ligne Setup uniquement (max 2 phrases, ~30 tokens) ──────────
 
-async function generateRichMessage(apiKey, type, data) {
+async function generateSetup(apiKey, type, data) {
   const prompts = {
-    position_open: `Tu es TRADING_PUBLISHER pour CryptoRizon.
-Style: David Ogilvy — première ligne qui arrête le scroll, faits concrets, pas de jargon, pas de FOMO.
-Règles:
-- Ligne 1: accroche factuelle et directe (ex: "Le marché a peur. Moi j'achète.")
-- Ligne 2-3: les chiffres clés (entry, stop, cible, R/R)
-- Ligne 4: pourquoi maintenant en 1 phrase (signal technique ou news)
-- Max 200 caractères total
-- Pas de hashtags. Max 2 émojis. Format Markdown Telegram (*gras*, _italique_).
-- Toujours préciser que c'est du PAPER TRADING
-Données: ${JSON.stringify(data)}`,
+    open: `Explique en 1-2 phrases courtes et directes pourquoi ce trade a été ouvert.
+Style: technique, factuel. Pas de majuscules inutiles. Pas d'émojis.
+Données: stratégie=${data.strategy} régime=${data.regime} side=${data.side} symbol=${data.symbol}
+Exemple: "Support testé → rebond technique attendu." ou "Rejet sur résistance + perte de momentum."`,
 
-    position_close: `Tu es TRADING_PUBLISHER pour CryptoRizon.
-Style: David Ogilvy — honnêteté totale, chiffres précis, leçon claire.
-Règles:
-- Si profit: ligne 1 = résultat net. Ligne 2 = pourquoi ça a marché. Pas d'arrogance.
-- Si perte: ligne 1 = résultat net. Ligne 2 = ce que ça apprend. Pas d'excuse.
-- Max 200 caractères. Max 2 émojis. Format Markdown Telegram.
-- Toujours préciser PAPER TRADING et la durée de la position
-Données: ${JSON.stringify(data)}`,
+    win: `Explique en 1 phrase courte pourquoi ce trade a gagné.
+Style: factuel, confiant. Pas d'arrogance.
+Données: stratégie=${data.strategy} pnl=${data.pnl_pct}% durée=${Math.round((data.hold_ms??0)/60000)}min
+Exemple: "Mean Reversion sur support clé. Discipline respectée → TP touché."`,
 
-    daily_recap: `Tu es TRADING_PUBLISHER pour CryptoRizon.
-Style: David Ogilvy — rapport de fin de journée, chiffres d'abord, opinion ensuite.
-Structure obligatoire:
-- Ligne 1: PnL du jour en $ et % (le fait brut)
-- Ligne 2: win rate + nombre de trades
-- Ligne 3: meilleur trade (symbol + PnL)
-- Ligne 4: 1 leçon concrète tirée de la journée
-- Ligne 5: état du système demain (régime de marché attendu)
-- Max 350 caractères. Format Markdown. Ton: analytique, pas commercial.
-Données: ${JSON.stringify(data)}`,
+    loss: `Explique en 2 phrases courtes pourquoi ce trade a perdu. Tire une leçon concrète.
+Style: honnête, pédagogique. Pas d'excuse.
+Données: stratégie=${data.strategy} durée=${Math.round((data.hold_ms??0)/60000)}min exit_reason=${data.exit_reason}
+Exemple: "Momentum vendeur invalidé. Entrée trop précoce sur retournement haussier."`,
+
+    educational: `Explique en 3-4 lignes courtes le principe de la stratégie ${data.strategy} en trading crypto.
+Format:
+Principe : [1 phrase]
+Les agents détectent :
+• [signal 1]
+• [signal 2]
+• [signal 3]
+Résultat : [1 phrase conclusion]`,
   };
 
   const controller = new AbortController();
@@ -84,63 +70,245 @@ Données: ${JSON.stringify(data)}`,
       },
       body: JSON.stringify({
         model:      MODEL,
-        max_tokens: MAX_TOKENS,
+        max_tokens: 180,
         messages:   [{ role: "user", content: prompts[type] }],
       }),
       signal: controller.signal,
     });
     if (!res.ok) throw new Error(`API HTTP ${res.status}`);
-    const data2 = await res.json();
-    return data2.content?.[0]?.text?.trim() ?? null;
+    const d = await res.json();
+    return d.content?.[0]?.text?.trim() ?? null;
   } finally {
     clearTimeout(timer);
   }
 }
 
-// ─── Messages formatés simples (fallback sans LLM) ───────────────────────
+// ─── Formatage prix ───────────────────────────────────────────────────────
 
-function formatPositionOpen(pos) {
-  const emoji = pos.side === "BUY" ? "🟢" : "🔴";
-  const dir   = pos.side === "BUY" ? "LONG" : "SHORT";
-  return `${emoji} *[PAPER] ${dir} ${pos.symbol}*\n\n` +
-    `💵 Entrée: \`${pos.entry_fill}\`\n` +
-    `🛑 Stop: \`${pos.stop}\`\n` +
-    `🎯 Cible: \`${pos.tp}\`\n` +
-    `📊 R/R: ${pos.risk_reward}x | Risque: $${pos.risk_usd?.toFixed(2)}\n` +
-    `🧠 Stratégie: _${pos.strategy}_\n` +
-    `📰 Régime: ${pos.regime}`;
+function fmtPrice(p) {
+  if (!p) return "—";
+  return parseFloat(p).toLocaleString("fr-FR", { maximumFractionDigits: 4 });
 }
 
-function formatPositionClose(pos) {
-  const win   = pos.pnl_usd >= 0;
-  const emoji = win ? "💰" : "💸";
-  const pnlStr = `${pos.pnl_usd >= 0 ? "+" : ""}$${pos.pnl_usd?.toFixed(2)} (${pos.pnl_pct >= 0 ? "+" : ""}${pos.pnl_pct?.toFixed(2)}%)`;
-  const reason = pos.exit_reason === "TAKE_PROFIT" ? "✅ Take Profit" : "❌ Stop Loss";
-  const holdMin = Math.round((pos.hold_ms ?? 0) / 60000);
-  return `${emoji} *[PAPER] CLÔTURE ${pos.symbol}*\n\n` +
-    `${reason}\n` +
-    `📈 PnL: *${pnlStr}*\n` +
-    `⏱ Durée: ${holdMin} min\n` +
-    `🔄 Entrée: ${pos.entry_fill} → Sortie: ${pos.exit_price}`;
+function fmtConf(c) {
+  return Math.round((c ?? 0) * 100);
 }
 
-function formatKillSwitch(ks) {
-  return `🚨 *KILL SWITCH DÉCLENCHÉ*\n\n` +
-    `Raison: _${ks.reason}_\n` +
-    `Toutes les positions sont bloquées.\n` +
-    `Action requise: vérifier le système et reset manuellement.`;
+function fmtDuration(ms) {
+  if (!ms) return "—";
+  const min = Math.round(ms / 60000);
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m > 0 ? `${h}h${m}min` : `${h}h`;
 }
 
-function formatDailyRecap(data) {
-  const pnlEmoji = data.daily_pnl >= 0 ? "📈" : "📉";
-  return `📊 *Recap Journalier — CryptoRizon Paper Trading*\n\n` +
-    `${pnlEmoji} PnL: *${data.daily_pnl >= 0 ? "+" : ""}$${data.daily_pnl?.toFixed(2)}*\n` +
-    `🔢 Trades: ${data.total_trades} (${data.wins}✅ ${data.losses}❌)\n` +
-    `📉 Win rate: ${data.win_rate?.toFixed(0)}%\n` +
-    `💼 Positions ouvertes: ${data.open_positions}`;
+// ─── Templates ───────────────────────────────────────────────────────────
+
+function tplPositionOpen(pos, tradeNum, setup) {
+  const dir   = pos.side === "BUY" ? "🚀 LONG" : "🔻 SHORT";
+  const pair  = pos.symbol.replace("USDT", "/USDT");
+  const conf  = fmtConf(pos.confidence ?? 0);
+  const rr    = pos.risk_reward ?? 2;
+
+  return (
+`${dir} OUVERT — ${pair}
+#${tradeNum} • Confidence ${conf}/100
+
+📥 Entry      \`$${fmtPrice(pos.entry_fill)}\`
+🛑 Stop       \`$${fmtPrice(pos.stop)}\`
+🎯 TakeProfit \`$${fmtPrice(pos.tp)}\`
+
+⚖️ Risk/Reward : 1:${rr}
+💰 Risk : $${pos.risk_usd?.toFixed(0) ?? 100}
+
+🧠 Setup
+${setup ?? "Signal technique détecté."}
+
+⚠️ PAPER TRADING`
+  );
 }
 
-// ─── Handler ──────────────────────────────────────────────────────────────
+function tplPositionCloseWin(pos, tradeNum, setup) {
+  const pair = pos.symbol.replace("USDT", "/USDT");
+  const dir  = pos.side === "BUY" ? "LONG" : "SHORT";
+  const conf = fmtConf(pos.confidence ?? 0);
+
+  return (
+`✅ TRADE GAGNANT — ${pair} (${dir})
+#${tradeNum} • Confidence ${conf}/100
+
+💰 +${pos.pnl_usd?.toFixed(0)}$ (+${pos.pnl_pct?.toFixed(2)}%)
+
+📥 Entry : \`$${fmtPrice(pos.entry_fill)}\`
+📤 Exit  : \`$${fmtPrice(pos.exit_price)}\`
+
+⏱ Durée : ${fmtDuration(pos.hold_ms)}
+
+🧠 Setup
+${setup ?? "Discipline respectée → TP touché."}
+
+⚠️ PAPER TRADING`
+  );
+}
+
+function tplPositionCloseLoss(pos, tradeNum, setup) {
+  const pair = pos.symbol.replace("USDT", "/USDT");
+  const dir  = pos.side === "BUY" ? "LONG" : "SHORT";
+  const conf = fmtConf(pos.confidence ?? 0);
+
+  return (
+`❌ TRADE PERDANT — ${pair} (${dir})
+#${tradeNum} • Confidence ${conf}/100
+
+📉 ${pos.pnl_usd?.toFixed(0)}$ (${pos.pnl_pct?.toFixed(2)}%)
+
+📥 Entry : \`$${fmtPrice(pos.entry_fill)}\`
+🛑 Stop  : \`$${fmtPrice(pos.exit_price)}\`
+
+⏱ Durée : ${fmtDuration(pos.hold_ms)}
+
+🧠 Analyse
+${setup ?? "Signal invalidé. Stop respecté."}
+
+⚠️ PAPER TRADING`
+  );
+}
+
+function tplDailyRecap(data) {
+  const pnlSign  = data.daily_pnl >= 0 ? "+" : "";
+  const roiSign  = data.roi_pct >= 0 ? "+" : "";
+  const best     = data.best_trade;
+  const worst    = data.worst_trade;
+
+  return (
+`📊 BILAN JOURNALIER
+
+Trades : ${data.total_trades}
+✅ Gagnants : ${data.wins}
+❌ Perdants : ${data.losses}
+
+📈 ROI jour : ${roiSign}${data.roi_pct?.toFixed(2)}%
+💰 PnL jour : ${pnlSign}$${data.daily_pnl?.toFixed(0)}
+
+${best ? `Meilleur trade\n${best.symbol.replace("USDT","")} +${best.pnl_pct?.toFixed(2)}%` : ""}
+${worst ? `\nPire trade\n${worst.symbol.replace("USDT","")} ${worst.pnl_pct?.toFixed(2)}%` : ""}
+
+📉 Winrate : ${data.win_rate?.toFixed(0)}%
+📊 Profit Factor : ${data.profit_factor?.toFixed(2) ?? "—"}
+
+⚠️ PAPER TRADING`
+  );
+}
+
+function tplWeeklyRecap(data) {
+  const pnlSign = data.daily_pnl >= 0 ? "+" : "";
+  const roiSign = data.roi_pct >= 0 ? "+" : "";
+  const best    = data.best_trade;
+  const worst   = data.worst_trade;
+
+  return (
+`📊 BILAN SEMAINE
+
+Trades : ${data.total_trades}
+✅ Gagnants : ${data.wins}
+❌ Perdants : ${data.losses}
+
+📈 ROI semaine : ${roiSign}${data.roi_pct?.toFixed(2)}%
+💰 PnL semaine : ${pnlSign}$${data.daily_pnl?.toFixed(0)}
+
+${best  ? `Meilleur trade\n${best.symbol.replace("USDT","")} +${best.pnl_pct?.toFixed(2)}%` : ""}
+${worst ? `\nPire trade\n${worst.symbol.replace("USDT","")} ${worst.pnl_pct?.toFixed(2)}%` : ""}
+
+📉 Winrate : ${data.win_rate?.toFixed(0)}%
+📊 Profit Factor : ${data.profit_factor?.toFixed(2) ?? "—"}
+
+⚠️ PAPER TRADING`
+  );
+}
+
+function tplViral(tradeCount) {
+  return (
+`🤖 Ces trades sont générés par mes agents IA.
+
+Ils analysent :
+
+• momentum et volumes
+• supports / résistances
+• régime de marché
+• sentiment et news crypto
+
+📊 ${tradeCount} trades publiés. Résultats transparents chaque jour.
+
+Rejoins le canal pour suivre les prochains trades en temps réel.`
+  );
+}
+
+function tplEducational(strategy, content) {
+  const names = {
+    MeanReversion:   "Mean Reversion",
+    Momentum:        "Momentum",
+    NewsTrading:     "News Trading",
+    Breakout:        "Breakout",
+    WhaleFollowing:  "Whale Following",
+    SentimentExtremes: "Sentiment Extremes",
+  };
+  return (
+`🧠 SETUP DU JOUR
+
+${names[strategy] ?? strategy}
+
+${content}`
+  );
+}
+
+// ─── Helpers state ────────────────────────────────────────────────────────
+
+function readJSON(p, def) {
+  try { return JSON.parse(fs.readFileSync(p, "utf-8")); } catch { return def; }
+}
+
+function writeJSON(p, d) {
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, JSON.stringify(d, null, 2));
+}
+
+function getTradeNumber(state) {
+  state.trade_counter = (state.trade_counter ?? 0) + 1;
+  return state.trade_counter;
+}
+
+// ─── Calcul métriques journalières ───────────────────────────────────────
+
+function calcDailyMetrics(trades, capitalUSD = 10000) {
+  if (!trades.length) return null;
+  const wins   = trades.filter(t => t.pnl_usd >= 0);
+  const losses = trades.filter(t => t.pnl_usd < 0);
+  const pnl    = trades.reduce((s, t) => s + (t.pnl_usd ?? 0), 0);
+  const totalWins   = wins.reduce((s, t) => s + t.pnl_usd, 0);
+  const totalLosses = Math.abs(losses.reduce((s, t) => s + t.pnl_usd, 0));
+  const avgWin  = wins.length   ? totalWins   / wins.length   : 0;
+  const avgLoss = losses.length ? totalLosses / losses.length : 0;
+  const winRate = trades.length ? wins.length / trades.length : 0;
+  const profitFactor = totalLosses > 0 ? totalWins / totalLosses : totalWins > 0 ? 99 : 0;
+  const expectancy = (winRate * avgWin) - ((1 - winRate) * avgLoss);
+  const sorted = [...trades].sort((a, b) => (b.pnl_usd ?? 0) - (a.pnl_usd ?? 0));
+
+  return {
+    total_trades:  trades.length,
+    wins:          wins.length,
+    losses:        losses.length,
+    daily_pnl:     parseFloat(pnl.toFixed(2)),
+    roi_pct:       parseFloat((pnl / capitalUSD * 100).toFixed(4)),
+    win_rate:      parseFloat((winRate * 100).toFixed(1)),
+    profit_factor: parseFloat(profitFactor.toFixed(2)),
+    expectancy:    parseFloat(expectancy.toFixed(2)),
+    best_trade:    sorted[0]   ?? null,
+    worst_trade:   sorted[sorted.length - 1] ?? null,
+  };
+}
+
+// ─── Handler principal ────────────────────────────────────────────────────
 
 export async function handler(ctx) {
   const token  = process.env.TRADER_TELEGRAM_BOT_TOKEN;
@@ -152,78 +320,58 @@ export async function handler(ctx) {
     return;
   }
 
-  const execDir   = path.join(ctx.stateDir, "exec");
-  const sentFile  = path.join(execDir, "publisher_sent.json");
-  const pnlFile   = path.join(execDir, "daily_pnl.json");
-  const posFile   = path.join(execDir, "positions.json");
+  const execDir  = path.join(ctx.stateDir, "exec");
+  const sentFile = path.join(execDir, "publisher_sent.json");
+  const pnlFile  = path.join(execDir, "daily_pnl.json");
+  const posFile  = path.join(execDir, "positions.json");
 
-  let sent = {};
-  try { sent = JSON.parse(fs.readFileSync(sentFile, "utf-8")); } catch {}
-
+  let sent      = readJSON(sentFile, {});
+  const positions = readJSON(posFile, []);
   let published = 0;
 
-  // ── 1. Nouvelles positions ouvertes ──────────────────────────────────
-  const positions = (() => {
-    try { return JSON.parse(fs.readFileSync(posFile, "utf-8")); } catch { return []; }
-  })();
-
+  // ── 1. Positions ouvertes ────────────────────────────────────────────
   for (const pos of positions) {
     if (pos.status !== "open") continue;
-    const sentKey = `open_${pos.id}`;
-    if (sent[sentKey]) continue;
+    const key = `open_${pos.id}`;
+    if (sent[key]) continue;
 
-    let msg;
-    if (apiKey) {
-      msg = await generateRichMessage(apiKey, "position_open", {
-        symbol:     pos.symbol,
-        side:       pos.side,
-        entry:      pos.entry_fill,
-        stop:       pos.stop,
-        tp:         pos.tp,
-        risk_reward: pos.risk_reward,
-        risk_usd:   pos.risk_usd,
-        strategy:   pos.strategy,
-        regime:     pos.regime,
-      });
-    }
-    if (!msg) msg = formatPositionOpen(pos);
+    const tradeNum = getTradeNumber(ctx.state);
+    pos._trade_num = tradeNum;
 
+    let setup = null;
+    if (apiKey) setup = await generateSetup(apiKey, "open", pos);
+
+    const msg = tplPositionOpen(pos, tradeNum, setup);
     await sendTelegram(token, chatId, msg);
-    sent[sentKey] = Date.now();
+    sent[key] = Date.now();
     published++;
-    ctx.log(`📤 Position ouverte publiée: ${pos.symbol} ${pos.side}`);
+    ctx.log(`📤 OPEN ${pos.symbol} ${pos.side} #${tradeNum}`);
   }
 
-  // ── 2. Positions fermées (depuis le ledger) ───────────────────────────
+  // ── 2. Positions fermées (ledger) ────────────────────────────────────
   const cursor = ctx.state.cursors?.ledger ?? 0;
   const { events: ledger, nextCursor } =
     ctx.bus.readSince("trading.exec.trade.ledger", cursor, 20);
 
   for (const event of ledger) {
-    const pos     = event.payload;
-    const sentKey = `close_${pos.id ?? event.event_id}`;
-    if (sent[sentKey]) continue;
+    const pos = event.payload;
+    const key = `close_${pos.id ?? event.event_id}`;
+    if (sent[key]) continue;
 
-    let msg;
-    if (apiKey) {
-      msg = await generateRichMessage(apiKey, "position_close", {
-        symbol:      pos.symbol,
-        side:        pos.side,
-        pnl_usd:     pos.pnl_usd,
-        pnl_pct:     pos.pnl_pct,
-        exit_reason: pos.exit_reason,
-        hold_ms:     pos.hold_ms,
-        entry:       pos.entry_fill,
-        exit:        pos.exit_price,
-        strategy:    pos.strategy,
-      });
-    }
-    if (!msg) msg = formatPositionClose(pos);
+    const tradeNum = ctx.state.trade_counter ?? getTradeNumber(ctx.state);
+    const isWin    = (pos.pnl_usd ?? 0) >= 0;
+
+    let setup = null;
+    if (apiKey) setup = await generateSetup(apiKey, isWin ? "win" : "loss", pos);
+
+    const msg = isWin
+      ? tplPositionCloseWin(pos, tradeNum, setup)
+      : tplPositionCloseLoss(pos, tradeNum, setup);
 
     await sendTelegram(token, chatId, msg);
-    sent[sentKey] = Date.now();
+    sent[key] = Date.now();
     published++;
-    ctx.log(`📤 Clôture publiée: ${pos.symbol} PnL=$${pos.pnl_usd}`);
+    ctx.log(`📤 CLOSE ${pos.symbol} ${isWin ? "WIN" : "LOSS"} $${pos.pnl_usd}`);
   }
 
   ctx.state.cursors = { ...ctx.state.cursors, ledger: nextCursor };
@@ -231,60 +379,90 @@ export async function handler(ctx) {
   // ── 3. Kill switch ────────────────────────────────────────────────────
   const ksFile = path.join(ctx.stateDir, "exec", "killswitch.json");
   try {
-    const ks = JSON.parse(fs.readFileSync(ksFile, "utf-8"));
+    const ks = readJSON(ksFile, {});
     if (ks.state === "TRIPPED" && !sent[`ks_${ks.tripped_at}`]) {
-      const msg = formatKillSwitch(ks);
+      const msg = `🚨 *KILL SWITCH DÉCLENCHÉ*\n\nRaison: _${ks.reason}_\nTous les trades sont bloqués.\nAction requise: reset manuel.`;
       await sendTelegram(token, chatId, msg);
       sent[`ks_${ks.tripped_at}`] = Date.now();
       published++;
-      ctx.log("🚨 Kill switch notifié");
     }
   } catch {}
 
-  // ── 4. Recap journalier (une fois par jour à partir de 20h) ──────────
-  const hour    = new Date().getUTCHours();
-  const today   = new Date().toISOString().slice(0, 10);
-  const recapKey = `recap_${today}`;
+  // ── 4. Bilan journalier (19h UTC = 21h Paris) ─────────────────────
+  const hour  = new Date().getUTCHours();
+  const today = new Date().toISOString().slice(0, 10);
+  const recapKey = `recap_daily_${today}`;
 
   if (hour >= 19 && !sent[recapKey]) {
-    const dailyPnl = (() => {
-      try { return JSON.parse(fs.readFileSync(pnlFile, "utf-8")); } catch { return {}; }
-    })();
-
     const { events: allTrades } = ctx.bus.readSince("trading.exec.trade.ledger", 0, 1000);
-    const todayTrades = allTrades.filter(e => {
-      const d = new Date(e.payload?.closed_at ?? 0).toISOString().slice(0, 10);
-      return d === today;
-    });
+    const todayTrades = allTrades
+      .filter(e => new Date(e.payload?.closed_at ?? 0).toISOString().slice(0, 10) === today)
+      .map(e => e.payload);
 
-    const wins   = todayTrades.filter(e => e.payload.pnl_usd >= 0).length;
-    const losses = todayTrades.filter(e => e.payload.pnl_usd < 0).length;
-    const total  = todayTrades.length;
+    const dailyPnl = readJSON(pnlFile, {});
+    const metrics  = calcDailyMetrics(todayTrades);
 
-    const recapData = {
-      daily_pnl:      dailyPnl[today] ?? 0,
-      total_trades:   total,
-      wins,
-      losses,
-      win_rate:       total > 0 ? (wins / total * 100) : 0,
-      open_positions: positions.filter(p => p.status === "open").length,
-    };
-
-    let msg;
-    if (apiKey && total > 0) {
-      msg = await generateRichMessage(apiKey, "daily_recap", recapData);
+    if (metrics && metrics.total_trades > 0) {
+      metrics.daily_pnl = dailyPnl[today] ?? metrics.daily_pnl;
+      const msg = tplDailyRecap(metrics);
+      await sendTelegram(token, chatId, msg);
+      sent[recapKey] = Date.now();
+      published++;
+      ctx.log("📊 Bilan journalier envoyé");
     }
-    if (!msg) msg = formatDailyRecap(recapData);
-
-    await sendTelegram(token, chatId, msg);
-    sent[recapKey] = Date.now();
-    published++;
-    ctx.log("📊 Recap journalier envoyé");
   }
 
-  // Sauvegarde
-  fs.mkdirSync(execDir, { recursive: true });
-  fs.writeFileSync(sentFile, JSON.stringify(sent, null, 2));
+  // ── 5. Bilan hebdomadaire (dimanche 20h UTC) ──────────────────────
+  const dayOfWeek = new Date().getUTCDay();
+  const weekKey   = `recap_weekly_${today}`;
 
+  if (dayOfWeek === 0 && hour >= 20 && !sent[weekKey]) {
+    const { events: allTrades } = ctx.bus.readSince("trading.exec.trade.ledger", 0, 5000);
+    const weekAgo = Date.now() - 7 * 24 * 3600 * 1000;
+    const weekTrades = allTrades
+      .filter(e => (e.payload?.closed_at ?? 0) > weekAgo)
+      .map(e => e.payload);
+
+    const metrics = calcDailyMetrics(weekTrades);
+    if (metrics && metrics.total_trades > 0) {
+      const msg = tplWeeklyRecap(metrics);
+      await sendTelegram(token, chatId, msg);
+      sent[weekKey] = Date.now();
+      published++;
+      ctx.log("📊 Bilan hebdomadaire envoyé");
+    }
+  }
+
+  // ── 6. Message viral tous les 10 trades ───────────────────────────
+  const tradeCount  = ctx.state.trade_counter ?? 0;
+  const lastViral   = ctx.state.last_viral_at ?? 0;
+  const viralEvery  = 10;
+
+  if (tradeCount > 0 && tradeCount % viralEvery === 0 && tradeCount !== lastViral) {
+    const msg = tplViral(tradeCount);
+    await sendTelegram(token, chatId, msg);
+    ctx.state.last_viral_at = tradeCount;
+    published++;
+    ctx.log(`📣 Message viral envoyé (${tradeCount} trades)`);
+  }
+
+  // ── 7. Message éducatif (lundi 9h UTC = 11h Paris) ────────────────
+  const eduKey = `educational_${today}`;
+  if (dayOfWeek === 1 && hour >= 9 && hour < 10 && !sent[eduKey]) {
+    const strategies = ["MeanReversion", "Momentum", "Breakout", "NewsTrading"];
+    const strategy   = strategies[Math.floor(Math.random() * strategies.length)];
+    let content = null;
+    if (apiKey) content = await generateSetup(apiKey, "educational", { strategy });
+    if (content) {
+      const msg = tplEducational(strategy, content);
+      await sendTelegram(token, chatId, msg);
+      sent[eduKey] = Date.now();
+      published++;
+      ctx.log(`🧠 Message éducatif envoyé: ${strategy}`);
+    }
+  }
+
+  // ── Sauvegarde ────────────────────────────────────────────────────
+  writeJSON(sentFile, sent);
   ctx.log(`✅ ${published} messages publiés`);
 }
