@@ -1,0 +1,8 @@
+{
+  "id": "trading.STRATEGY_RESEARCHER",
+  "name": "STRATEGY_RESEARCHER",
+  "entrypoint": "index.js",
+  "description": "Veille quotidienne web (Reddit, blogs quant). Identifie nouvelles stratégies crypto via Sonnet. Écrit strategy_candidates.json.",
+  "permissions": { "net": true, "fs_state_read": true, "fs_state_write": true },
+  "env": ["TRADING_ENV", "STATE_DIR", "ANTHROPIC_API_KEY"]
+}
