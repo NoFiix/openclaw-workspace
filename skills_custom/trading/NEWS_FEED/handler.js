@@ -21,7 +21,7 @@ const RSS_SOURCES = [
   { name: "TheDefiant",      url: "https://thedefiant.io/feed",                              lang: "en", priority: "MEDIUM" },
   { name: "Cryptoast",       url: "https://cryptoast.fr/feed/",                              lang: "fr", priority: "MEDIUM" },
   { name: "JournalDuCoin",   url: "https://journalducoin.com/feed/",                         lang: "fr", priority: "MEDIUM" },
-  { name: "SEC_EDGAR",       url: "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=&dateb=&owner=include&count=10&search_text=&output=atom", lang: "en", priority: "CRITICAL" },
+  { name: "SEC_EDGAR", url: "https://efts.sec.gov/LATEST/search-index?q=%22bitcoin%22+OR+%22cryptocurrency%22+OR+%22digital+asset%22&forms=8-K&dateRange=custom&startdt=2025-01-01", lang: "en", priority: "CRITICAL" },
 ];
 
 function makeHash(source, content) {
@@ -219,9 +219,12 @@ export async function handler(ctx) {
   let totalArticles = 0;
 
   // 1. RSS sources
-  for (const source of RSS_SOURCES) {
+  for (const source of RSS_SOURCES.filter(s => s.name !== "SEC_EDGAR")) {
     totalArticles += await scrapeRSS(source, seenHashes, ctx);
   }
+
+  // 1b. SEC EDGAR
+  totalArticles += await scrapeSecEdgar(RSS_SOURCES.find(s => s.name === "SEC_EDGAR"), seenHashes, ctx);
 
   // 2. CryptoPanic (si token configuré)
   totalArticles += await scrapeCryptoPanic(seenHashes, ctx);
@@ -237,4 +240,42 @@ export async function handler(ctx) {
     `✅ Terminé — ${totalArticles} articles + ${fgCount} fear&greed` +
     ` | ${seenHashes.size - initialSize} nouveaux | ${seenHashes.size} hashes total`
   );
+}
+
+// SEC EDGAR JSON parser
+async function scrapeSecEdgar(source, seenHashes, ctx) {
+  try {
+    const res  = await fetch(source.url, { headers: { "User-Agent": "CryptoRizonBot/1.0 contact@cryptorizon.com" } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const hits = data?.hits?.hits ?? [];
+    let emitted = 0;
+
+    for (const hit of hits.slice(0, 10)) {
+      const s     = hit._source ?? {};
+      const names = (s.display_names ?? []).join(", ").slice(0, 100);
+      const form  = (s.root_forms ?? ["8-K"])[0];
+      const date  = s.file_date ?? "";
+      const adsh  = s.adsh ?? "";
+      const cik   = (s.ciks?.[0] ?? "").replace(/^0+/, "");
+      const adshClean = adsh.replace(/-/g, "");
+      const url   = `https://www.sec.gov/Archives/edgar/data/${cik}/${adshClean}/`;
+      const title = `SEC ${form}: ${names}`;
+      const hash  = makeHash("sec_edgar", adsh);
+
+      if (!adsh || seenHashes.has(hash)) continue;
+      seenHashes.add(hash);
+
+      ctx.emit("trading.raw.news.article", "raw.news.article.v1", { asset: "MARKET" }, {
+        headline: title.slice(0, 300), url, source: "SEC_EDGAR", lang: "en",
+        priority: "CRITICAL", published: date, hash, feed: "sec_edgar",
+      });
+      emitted++;
+    }
+    ctx.log(`  ✅ SEC_EDGAR → ${emitted} nouveaux filings crypto (${hits.length} total)`);
+    return emitted;
+  } catch (e) {
+    ctx.log(`  ⚠️ SEC_EDGAR KO: ${e.message}`);
+    return 0;
+  }
 }
