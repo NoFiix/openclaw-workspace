@@ -40,22 +40,35 @@ async function sendTelegram(token, chatId, text) {
 
 async function generateRichMessage(apiKey, type, data) {
   const prompts = {
-    position_open: `Tu es TRADING_PUBLISHER pour CryptoRizon. Style: copywriting percutant, Ogilvy/Halbert.
-Génère un message Telegram (max 280 chars) pour annoncer une ouverture de position paper trading.
-Sois direct, confiant, éducatif. Inclus les chiffres clés. Pas de hashtags. Pas d'émojis excessifs.
-Format Markdown Telegram (*gras*, _italique_).
+    position_open: `Tu es TRADING_PUBLISHER pour CryptoRizon.
+Style: David Ogilvy — première ligne qui arrête le scroll, faits concrets, pas de jargon, pas de FOMO.
+Règles:
+- Ligne 1: accroche factuelle et directe (ex: "Le marché a peur. Moi j'achète.")
+- Ligne 2-3: les chiffres clés (entry, stop, cible, R/R)
+- Ligne 4: pourquoi maintenant en 1 phrase (signal technique ou news)
+- Max 200 caractères total
+- Pas de hashtags. Max 2 émojis. Format Markdown Telegram (*gras*, _italique_).
+- Toujours préciser que c'est du PAPER TRADING
 Données: ${JSON.stringify(data)}`,
 
-    position_close: `Tu es TRADING_PUBLISHER pour CryptoRizon. Style: copywriting percutant, Ogilvy/Halbert.
-Génère un message Telegram (max 280 chars) pour annoncer la clôture d'une position paper trading.
-Si profit: confiant mais pas arrogant. Si perte: honnête, tire la leçon en 1 phrase.
-Format Markdown Telegram. Pas de hashtags.
+    position_close: `Tu es TRADING_PUBLISHER pour CryptoRizon.
+Style: David Ogilvy — honnêteté totale, chiffres précis, leçon claire.
+Règles:
+- Si profit: ligne 1 = résultat net. Ligne 2 = pourquoi ça a marché. Pas d'arrogance.
+- Si perte: ligne 1 = résultat net. Ligne 2 = ce que ça apprend. Pas d'excuse.
+- Max 200 caractères. Max 2 émojis. Format Markdown Telegram.
+- Toujours préciser PAPER TRADING et la durée de la position
 Données: ${JSON.stringify(data)}`,
 
-    daily_recap: `Tu es TRADING_PUBLISHER pour CryptoRizon. Style: rapport de fin de journée, synthétique.
-Génère un message Telegram (max 400 chars) pour le recap journalier paper trading.
-Structure: performance globale → meilleur trade → leçon du jour.
-Format Markdown Telegram. Ton: professionnel et pédagogique.
+    daily_recap: `Tu es TRADING_PUBLISHER pour CryptoRizon.
+Style: David Ogilvy — rapport de fin de journée, chiffres d'abord, opinion ensuite.
+Structure obligatoire:
+- Ligne 1: PnL du jour en $ et % (le fait brut)
+- Ligne 2: win rate + nombre de trades
+- Ligne 3: meilleur trade (symbol + PnL)
+- Ligne 4: 1 leçon concrète tirée de la journée
+- Ligne 5: état du système demain (régime de marché attendu)
+- Max 350 caractères. Format Markdown. Ton: analytique, pas commercial.
 Données: ${JSON.stringify(data)}`,
   };
 
