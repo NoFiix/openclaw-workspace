@@ -1,0 +1,8 @@
+{
+  "id": "trading.PERFORMANCE_ANALYST",
+  "name": "PERFORMANCE_ANALYST",
+  "entrypoint": "index.js",
+  "description": "Calcule winrate, PnL, Sharpe, drawdown, profit factor par stratégie/asset/régime. Met à jour learning/. Pas de LLM.",
+  "permissions": { "net": false, "fs_state_read": true, "fs_state_write": true },
+  "env": ["TRADING_ENV", "STATE_DIR"]
+}
