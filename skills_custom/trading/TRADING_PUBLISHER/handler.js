@@ -175,7 +175,31 @@ ${setup ?? "Signal invalidé. Stop respecté."}
   );
 }
 
-function tplDailyRecap(data) {
+
+// ─── Résumé stratégies pour les recaps ───────────────────────────────────
+
+function loadStrategyPerfSummary(stateDir) {
+  try {
+    const p = path.join(stateDir, "learning", "strategy_performance.json");
+    const data = JSON.parse(fs.readFileSync(p, "utf-8"));
+    const strats = Object.values(data)
+      .filter(s => s.trades_count >= 3)
+      .sort((a, b) => (b.profit_factor ?? 0) - (a.profit_factor ?? 0));
+
+    if (!strats.length) return null;
+
+    const lines = strats.map(s => {
+      const trend = s.profit_factor >= 1.5 ? "✅" : s.profit_factor >= 1.0 ? "⚠️" : "❌";
+      return `${trend} ${s.strategy_id}: WR ${s.win_rate?.toFixed(0)}% • PF ${s.profit_factor?.toFixed(2)} • ${s.trades_count} trades`;
+    });
+
+    return lines.join("\n");
+  } catch {
+    return null;
+  }
+}
+
+function tplDailyRecap(data, stratSummary = null) {
   const pnlSign  = data.daily_pnl >= 0 ? "+" : "";
   const roiSign  = data.roi_pct >= 0 ? "+" : "";
   const best     = data.best_trade;
@@ -197,11 +221,12 @@ ${worst ? `\nPire trade\n${worst.symbol.replace("USDT","")} ${worst.pnl_pct?.toF
 📉 Winrate : ${data.win_rate?.toFixed(0)}%
 📊 Profit Factor : ${data.profit_factor?.toFixed(2) ?? "—"}
 
-⚠️ PAPER TRADING`
+${stratSummary ? `\n🔬 Stratégies\n${stratSummary}\n` : ""}
+⚠️ PAPER TRADING\`
   );
 }
 
-function tplWeeklyRecap(data) {
+function tplWeeklyRecap(data, stratSummary = null) {
   const pnlSign = data.daily_pnl >= 0 ? "+" : "";
   const roiSign = data.roi_pct >= 0 ? "+" : "";
   const best    = data.best_trade;
@@ -223,7 +248,8 @@ ${worst ? `\nPire trade\n${worst.symbol.replace("USDT","")} ${worst.pnl_pct?.toF
 📉 Winrate : ${data.win_rate?.toFixed(0)}%
 📊 Profit Factor : ${data.profit_factor?.toFixed(2) ?? "—"}
 
-⚠️ PAPER TRADING`
+${stratSummary ? `\n🔬 Stratégies semaine\n${stratSummary}\n` : ""}
+⚠️ PAPER TRADING\`
   );
 }
 
@@ -404,7 +430,8 @@ export async function handler(ctx) {
 
     if (metrics && metrics.total_trades > 0) {
       metrics.daily_pnl = dailyPnl[today] ?? metrics.daily_pnl;
-      const msg = tplDailyRecap(metrics);
+      const stratSummary = loadStrategyPerfSummary(ctx.stateDir);
+      const msg = tplDailyRecap(metrics, stratSummary);
       await sendTelegram(token, chatId, msg);
       sent[recapKey] = Date.now();
       published++;
@@ -425,7 +452,8 @@ export async function handler(ctx) {
 
     const metrics = calcDailyMetrics(weekTrades);
     if (metrics && metrics.total_trades > 0) {
-      const msg = tplWeeklyRecap(metrics);
+      const stratSummary = loadStrategyPerfSummary(ctx.stateDir);
+      const msg = tplWeeklyRecap(metrics, stratSummary);
       await sendTelegram(token, chatId, msg);
       sent[weekKey] = Date.now();
       published++;

@@ -25,6 +25,49 @@ function getLastEvent(bus, topic, filterFn, limit = 5000) {
 }
 
 
+// ─── Chargement des stratégies actives ──────────────────────────────────
+
+function loadActiveStrategies(stateDir) {
+  const BUILTIN = [
+    { name: "MeanReversion", description: "Retour à la moyenne sur support/résistance clé", entry_rules: "RSI oversold/overbought + BB extremes + volume faible", exit_rules: "TP au niveau médian, SL hors de la range" },
+    { name: "Momentum",      description: "Suivi de tendance sur breakout confirmé",         entry_rules: "MACD haussier + EMA alignment + volume spike",          exit_rules: "TP trailing, SL sous dernier pivot" },
+    { name: "NewsTrading",   description: "Trade sur catalyseur fondamental majeur",          entry_rules: "News urgency >= 8 + mouvement prix > 1% + volume",      exit_rules: "TP rapide 1-2%, SL serré" },
+    { name: "Breakout",      description: "Cassure de niveau clé avec volume",               entry_rules: "Prix casse résistance + volume > 2x moyenne + MACD+",   exit_rules: "TP +2R au prochain niveau, SL sous cassure" },
+  ];
+
+  try {
+    const candidatesFile = path.join(stateDir, "learning", "strategy_candidates.json");
+    const perfFile       = path.join(stateDir, "learning", "strategy_performance.json");
+    const candidates     = JSON.parse(fs.readFileSync(candidatesFile, "utf-8"));
+    const perf           = JSON.parse(fs.readFileSync(perfFile, "utf-8"));
+
+    // Garder candidates avec exit_rules valides (pas "Non spécifiées")
+    const external = candidates.filter(s =>
+      (s.status === "active" || s.status === "candidate") &&
+      s.exit_rules && !s.exit_rules.toLowerCase().includes("non spécifié") &&
+      s.exit_rules.length > 15
+    );
+
+    // Exclure les doublons avec BUILTIN
+    const builtinNames = new Set(BUILTIN.map(s => s.name.toLowerCase()));
+    const newOnes = external.filter(s => !builtinNames.has(s.name.toLowerCase()));
+
+    return [...BUILTIN, ...newOnes];
+  } catch {
+    return BUILTIN;
+  }
+}
+
+function formatStrategiesForPrompt(strategies, perfData = {}) {
+  return strategies.map(s => {
+    const p = perfData[s.name];
+    const perfStr = p && p.trades_count >= 5
+      ? ` [WR=${p.win_rate}% PF=${p.profit_factor} n=${p.trades_count}]`
+      : " [en cours de test]";
+    return `- ${s.name}${perfStr}: ${s.description}`;
+  }).join("\n");
+}
+
 function getRecentNews(bus, symbol, maxAge_ms = 2 * 60 * 60 * 1000) {
   const { events } = bus.readSince("trading.intel.news.event", 0, 500);
   const now        = Date.now();
@@ -83,7 +126,8 @@ Réponds UNIQUEMENT en JSON valide. Aucun texte avant ou après.`;
   }
 }
 
-function buildUserPrompt(symbol, f1m, f1h, f4h, regime, recentNews = []) {
+function buildUserPrompt(symbol, f1m, f1h, f4h, regime, recentNews = [], strategies = [], perfData = {}) {
+  const stratList = formatStrategiesForPrompt(strategies, perfData);
   return `Analyse les données suivantes et génère une TradeProposal pour ${symbol}.
 
 ## Régime de marché
@@ -131,6 +175,9 @@ ${recentNews.some(n => n.urgency >= 8 && n.reliability?.score >= 0.7)
   : "Pas de news critique dans la fenêtre"
 }
 
+## Stratégies disponibles (choisis parmi celles-ci uniquement)
+${stratList}
+
 ## Règles ABSOLUES
 - Si régime = PANIC → side = "HOLD" obligatoire
 - Si confidence < 0.5 → side = "HOLD"
@@ -142,7 +189,7 @@ ${recentNews.some(n => n.urgency >= 8 && n.reliability?.score >= 0.7)
 ## Format de réponse JSON
 {
   "symbol": "${symbol}",
-  "strategy": "Momentum|MeanReversion|NewsTrading|WhaleFollowing|SentimentExtremes|SwingPosition",
+  "strategy": "${strategies.map(s=>s.name).join('|')}",
   "side": "BUY|SELL|HOLD",
   "confidence": 0.0,
   "setup": {
@@ -270,7 +317,13 @@ export async function handler(ctx) {
 
     try {
       const recentNews = getRecentNews(ctx.bus, symbol);
-      const userPrompt = buildUserPrompt(symbol, f1m, f1h, f4h, regime, recentNews);
+      const strategies = loadActiveStrategies(ctx.stateDir);
+      let perfData = {};
+      try {
+        const pf = path.join(ctx.stateDir, "learning", "strategy_performance.json");
+        perfData = JSON.parse(fs.readFileSync(pf, "utf-8"));
+      } catch {}
+      const userPrompt = buildUserPrompt(symbol, f1m, f1h, f4h, regime, recentNews, strategies, perfData);
       const raw        = await callHaiku(apiKey, systemPrompt, userPrompt);
 
       if (!raw) { ctx.log(`⚠️ ${symbol}: réponse vide Haiku`); continue; }

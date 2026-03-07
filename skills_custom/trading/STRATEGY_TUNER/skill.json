@@ -1,0 +1,8 @@
+{
+  "id": "trading.STRATEGY_TUNER",
+  "name": "STRATEGY_TUNER",
+  "entrypoint": "index.js",
+  "description": "Score pondéré (Expectancy 35%, PF 30%, DD 20%, Sharpe 10%, Count 5%). Active/désactive les stratégies candidates. Alerte Telegram si changement.",
+  "permissions": { "net": true, "fs_state_read": true, "fs_state_write": true },
+  "env": ["TRADER_TELEGRAM_BOT_TOKEN", "TRADER_TELEGRAM_CHAT_ID"]
+}
