@@ -207,7 +207,7 @@ ${stratList}
 
 // ─── Appel LLM ────────────────────────────────────────────────────────────
 
-async function callHaiku(apiKey, systemPrompt, userPrompt) {
+async function callHaiku(apiKey, systemPrompt, userPrompt, stateDir = "") {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
@@ -228,7 +228,7 @@ async function callHaiku(apiKey, systemPrompt, userPrompt) {
     });
     if (!res.ok) throw new Error(`Anthropic API HTTP ${res.status}`);
     const data = await res.json();
-    if (data.usage) logTokens(ctx?.stateDir ?? "", "TRADE_GENERATOR", MODEL, data.usage, "trade_proposal");
+    if (data.usage) logTokens(stateDir, "TRADE_GENERATOR", MODEL, data.usage, "trade_proposal");
     return data.content?.[0]?.text ?? null;
   } finally {
     clearTimeout(timer);
@@ -326,7 +326,7 @@ export async function handler(ctx) {
         perfData = JSON.parse(fs.readFileSync(pf, "utf-8"));
       } catch {}
       const userPrompt = buildUserPrompt(symbol, f1m, f1h, f4h, regime, recentNews, strategies, perfData);
-      const raw        = await callHaiku(apiKey, systemPrompt, userPrompt);
+      const raw = await callHaiku(apiKey, systemPrompt, userPrompt, ctx.stateDir);
 
       if (!raw) { ctx.log(`⚠️ ${symbol}: réponse vide Haiku`); continue; }
 

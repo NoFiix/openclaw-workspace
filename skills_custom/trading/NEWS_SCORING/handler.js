@@ -35,7 +35,7 @@ function getBaseReliability(item) {
   return 0.50;
 }
 
-async function callHaiku(apiKey, systemPrompt, userPrompt) {
+async function callHaiku(apiKey, systemPrompt, userPrompt, stateDir = "") {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
@@ -56,7 +56,7 @@ async function callHaiku(apiKey, systemPrompt, userPrompt) {
     });
     if (!res.ok) throw new Error(`Anthropic API HTTP ${res.status}`);
     const data = await res.json();
-    if (data.usage) logTokens(ctx?.stateDir ?? "", "NEWS_SCORING", MODEL, data.usage, "news_score");
+    if (data.usage) logTokens(stateDir, "NEWS_SCORING", MODEL, data.usage, "news_score");1~if (data.usage) logTokens(stateDir, "NEWS_SCORING", MODEL, data.usage, "news_score");
     return data.content?.[0]?.text ?? null;
   } finally {
     clearTimeout(timer);
@@ -144,7 +144,7 @@ export async function handler(ctx) {
 
     try {
       // ── Appel Haiku ─────────────────────────────────────────
-      const raw = await callHaiku(apiKey, buildSystemPrompt(), buildUserPrompt(item));
+      const raw = await callHaiku(apiKey, buildSystemPrompt(), buildUserPrompt(item), ctx.stateDir);
       if (!raw) { ctx.log(`⚠️ Haiku no response pour: ${text.slice(0, 50)}`); continue; }
 
       let parsed;

@@ -85,7 +85,7 @@ async function fetchRedditPosts(source) {
 
 // ─── Analyse Sonnet : extrait les stratégies ─────────────────────────────
 
-async function analyzeForStrategies(apiKey, posts, sourceName) {
+async function analyzeForStrategies(apiKey, posts, sourceName, stateDir = "") {
   if (!posts.length) return [];
 
   const postsText = posts
@@ -147,7 +147,7 @@ Réponds UNIQUEMENT en JSON, pas d'autre texte.`,
 
     if (!res.ok) throw new Error(`API ${res.status}`);
     const data = await res.json();
-    if (data.usage) logTokens(ctx?.stateDir ?? "", "STRATEGY_RESEARCHER", MODEL_RESEARCH, data.usage, "strategy_extraction");
+    if (data.usage) logTokens(stateDir, "STRATEGY_RESEARCHER", MODEL_RESEARCH, data.usage, "strategy_extraction");
     const text = data.content?.[0]?.text?.trim() ?? "[]";
 
     // Nettoyage JSON
@@ -210,7 +210,7 @@ export async function handler(ctx) {
 
     if (!posts.length) continue;
 
-    const strategies = await analyzeForStrategies(apiKey, posts, source.name);
+    const strategies = await analyzeForStrategies(apiKey, posts, source.name, ctx.stateDir);
     ctx.log(`    → ${strategies.length} stratégies identifiées`);
 
     allNew.push(...strategies);

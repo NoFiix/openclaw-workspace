@@ -1,23 +1,19 @@
 /**
- * logTokens v2 — module partagé de tracking des tokens LLM
- * Utilisé par trading ET content pipeline
- * Écrit dans state/trading/learning/token_costs.jsonl (fichier centralisé)
+ * logTokens v3 — module partagé de tracking des tokens LLM
+ * Utilise stateDir passé en paramètre (pas process.env)
  */
 import fs   from "fs";
 import path from "path";
 
-// Chemin centralisé — même fichier pour tous les systèmes
-const CENTRAL_LOG = process.env.STATE_DIR
-  ? path.join(process.env.STATE_DIR, "..", "trading", "learning", "token_costs.jsonl")
-  : "/home/node/.openclaw/workspace/state/trading/learning/token_costs.jsonl";
-
 export function logTokens(stateDir, agentId, model, usage, task = "", system = "trading") {
   try {
+    if (!stateDir) return; // Pas de stateDir = on ignore silencieusement
+
     const entry = {
       ts:       Date.now(),
       date:     new Date().toISOString().slice(0, 10),
       hour:     new Date().getUTCHours(),
-      system,   // "trading" | "content"
+      system,
       agent:    agentId,
       model,
       task,
@@ -27,18 +23,9 @@ export function logTokens(stateDir, agentId, model, usage, task = "", system = "
       cost_usd: calcCost(model, usage),
     };
 
-    // Essayer le chemin central d'abord, sinon fallback local
-    let file;
-    try {
-      file = CENTRAL_LOG;
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-    } catch {
-      file = stateDir
-        ? path.join(stateDir, "learning", "token_costs.jsonl")
-        : "/tmp/token_costs.jsonl";
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-    }
-
+    // stateDir = .../state/trading — on écrit dans learning/
+    const file = path.join(stateDir, "learning", "token_costs.jsonl");
+    fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.appendFileSync(file, JSON.stringify(entry) + "\n");
   } catch {}
 }

@@ -32,7 +32,7 @@ async function sendTelegram(token, chatId, text) {
 
 // ─── Haiku — ligne Setup uniquement (max 2 phrases, ~30 tokens) ──────────
 
-async function generateSetup(apiKey, type, data) {
+async function generateSetup(apiKey, type, data, stateDir = "") {
   const prompts = {
     open: `Explique en 1-2 phrases courtes et directes pourquoi ce trade a été ouvert.
 Style: technique, factuel. Pas de majuscules inutiles. Pas d'émojis.
@@ -78,7 +78,7 @@ Résultat : [1 phrase conclusion]`,
     });
     if (!res.ok) throw new Error(`API HTTP ${res.status}`);
     const d = await res.json();
-    if (d.usage) logTokens(ctx?.stateDir ?? "", "TRADING_PUBLISHER", MODEL, d.usage, "setup_line");
+    if (d.usage) logTokens(stateDir, "TRADING_PUBLISHER", MODEL, d.usage, "setup_line");
     return d.content?.[0]?.text?.trim() ?? null;
   } finally {
     clearTimeout(timer);
@@ -367,7 +367,7 @@ export async function handler(ctx) {
     pos._trade_num = tradeNum;
 
     let setup = null;
-    if (apiKey) setup = await generateSetup(apiKey, "open", pos);
+    if (apiKey) setup = await generateSetup(apiKey, "open", pos, ctx.stateDir);
 
     const msg = tplPositionOpen(pos, tradeNum, setup);
     await sendTelegram(token, chatId, msg);
@@ -390,7 +390,7 @@ export async function handler(ctx) {
     const isWin    = (pos.pnl_usd ?? 0) >= 0;
 
     let setup = null;
-    if (apiKey) setup = await generateSetup(apiKey, isWin ? "win" : "loss", pos);
+    if (apiKey) setup = await generateSetup(apiKey, isWin ? "win" : "loss", pos, ctx.stateDir);
 
     const msg = isWin
       ? tplPositionCloseWin(pos, tradeNum, setup)
@@ -482,7 +482,7 @@ export async function handler(ctx) {
     const strategies = ["MeanReversion", "Momentum", "Breakout", "NewsTrading"];
     const strategy   = strategies[Math.floor(Math.random() * strategies.length)];
     let content = null;
-    if (apiKey) content = await generateSetup(apiKey, "educational", { strategy });
+    if (apiKey) content = await generateSetup(apiKey, "educational", { strategy }, ctx.stateDir);
     if (content) {
       const msg = tplEducational(strategy, content);
       await sendTelegram(token, chatId, msg);
