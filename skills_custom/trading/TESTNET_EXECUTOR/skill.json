@@ -1,0 +1,8 @@
+{
+  "id": "trading.TESTNET_EXECUTOR",
+  "name": "TESTNET_EXECUTOR",
+  "entrypoint": "index.js",
+  "description": "Exécute de vrais ordres sur testnet.binance.vision. Ordre MARKET d'entrée + OCO (TP+SL). Remplace PAPER_EXECUTOR en mode testnet.",
+  "permissions": { "net": true, "fs_state_read": true, "fs_state_write": true },
+  "env": ["BINANCE_TESTNET_API_KEY", "BINANCE_TESTNET_SECRET_KEY", "BINANCE_TESTNET_BASE_URL"]
+}
