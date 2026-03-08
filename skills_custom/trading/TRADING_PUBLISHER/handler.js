@@ -7,6 +7,7 @@
 
 import fs   from "fs";
 import path from "path";
+import { logTokens } from "../_shared/logTokens.js";
 
 const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
 const MODEL         = "claude-haiku-4-5-20251001";
@@ -77,6 +78,7 @@ Résultat : [1 phrase conclusion]`,
     });
     if (!res.ok) throw new Error(`API HTTP ${res.status}`);
     const d = await res.json();
+    if (d.usage) logTokens(ctx?.stateDir ?? "", "TRADING_PUBLISHER", MODEL, d.usage, "setup_line");
     return d.content?.[0]?.text?.trim() ?? null;
   } finally {
     clearTimeout(timer);

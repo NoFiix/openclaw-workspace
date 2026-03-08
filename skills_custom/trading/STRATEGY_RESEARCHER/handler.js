@@ -8,6 +8,7 @@
 
 import fs   from "fs";
 import path from "path";
+import { logTokens } from "../_shared/logTokens.js";
 
 const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
 const MODEL_RESEARCH = "claude-sonnet-4-20250514"; // Sonnet pour analyse qualitative
@@ -146,6 +147,7 @@ Réponds UNIQUEMENT en JSON, pas d'autre texte.`,
 
     if (!res.ok) throw new Error(`API ${res.status}`);
     const data = await res.json();
+    if (data.usage) logTokens(ctx?.stateDir ?? "", "STRATEGY_RESEARCHER", MODEL_RESEARCH, data.usage, "strategy_extraction");
     const text = data.content?.[0]?.text?.trim() ?? "[]";
 
     // Nettoyage JSON

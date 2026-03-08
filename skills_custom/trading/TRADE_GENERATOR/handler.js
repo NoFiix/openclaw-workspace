@@ -8,6 +8,7 @@
 
 import fs   from "fs";
 import path from "path";
+import { logTokens } from "../_shared/logTokens.js";
 
 const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
 const MODEL         = "claude-haiku-4-5-20251001";
@@ -227,6 +228,7 @@ async function callHaiku(apiKey, systemPrompt, userPrompt) {
     });
     if (!res.ok) throw new Error(`Anthropic API HTTP ${res.status}`);
     const data = await res.json();
+    if (data.usage) logTokens(ctx?.stateDir ?? "", "TRADE_GENERATOR", MODEL, data.usage, "trade_proposal");
     return data.content?.[0]?.text ?? null;
   } finally {
     clearTimeout(timer);
