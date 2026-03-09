@@ -7,3 +7,4 @@ agents/*/memory/
 .pi
 .env
 USER.md
+CONTEXT_BUNDLE_*.md
