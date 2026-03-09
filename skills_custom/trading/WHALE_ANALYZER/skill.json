@@ -1,0 +1,8 @@
+{
+  "id": "trading.WHALE_ANALYZER",
+  "name": "WHALE_ANALYZER",
+  "entrypoint": "index.js",
+  "description": "Filtre et score les transferts whale bruts en signal consultatif par actif. Charge les adresses depuis exchange_addresses.json. Zéro LLM.",
+  "permissions": { "fs_state_read": true, "fs_state_write": true },
+  "env": []
+}
