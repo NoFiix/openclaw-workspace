@@ -78,19 +78,16 @@ export async function handler(ctx) {
   const auditFile    = path.join(ctx.stateDir, "memory", "orchestrator_audit.jsonl");
 
   // Charger état
-  const state = readJSON(stateFile, {
-    agent_id: "TRADING_ORCHESTRATOR",
-    version:  1,
-    cursors: {
-      "trading.strategy.order.plan":      0,
-      "trading.strategy.policy.decision": 0,
-    },
-    stats: {
-      runs: 0, submitted: 0, blocked: 0,
-      expired: 0, human_required: 0, errors: 0,
-      last_run_ts: 0,
-    },
-  });
+  const state = ctx.state;
+  if (!state.cursors) state.cursors = {
+    "trading.strategy.order.plan":      0,
+    "trading.strategy.policy.decision": 0,
+  };
+  if (!state.stats) state.stats = {
+    runs: 0, submitted: 0, blocked: 0,
+    expired: 0, human_required: 0, errors: 0,
+    last_run_ts: 0,
+  };
 
   // Pipeline en cours (keyed by order_plan_ref)
   const pipeline = readJSON(pipelineFile, {});
@@ -228,9 +225,7 @@ export async function handler(ctx) {
   writeJSON(pipelineFile, cleaned);
 
   // ── 5. Sauvegarder état ───────────────────────────────────────────────────
-  state.stats.runs++;
-  state.stats.last_run_ts = now;
-  writeJSON(stateFile, state);
+  // agentRuntime sauvegarde ctx.state automatiquement
 
   const pending = active.length;
   if (pending > 0 || newPlans.length > 0) {

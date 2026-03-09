@@ -165,14 +165,7 @@ export async function handler(ctx) {
   });
 
   // Charger état (curseur bus)
-  const stateFile = path.join(ctx.stateDir, "memory", "POLICY_ENGINE.state.json");
-  const state = readJSON(stateFile, {
-    agent_id: "POLICY_ENGINE",
-    version:  1,
-    cursors:  { "trading.strategy.order.plan": 0 },
-    stats:    { runs: 0, approved: 0, blocked: 0, human_required: 0, errors: 0, last_run_ts: 0 },
-  });
-
+  const state = ctx.state;
   if (!state.cursors) state.cursors = { "trading.strategy.order.plan": 0 };
   if (!state.stats)   state.stats   = { runs: 0, approved: 0, blocked: 0, human_required: 0, errors: 0, last_run_ts: 0 };
 
@@ -186,9 +179,6 @@ export async function handler(ctx) {
   );
 
   if (plans.length === 0) {
-    state.stats.runs++;
-    state.stats.last_run_ts = Date.now();
-    writeJSON(stateFile, state);
     return;
   }
 
@@ -251,9 +241,6 @@ export async function handler(ctx) {
   }
 
   state.cursors["trading.strategy.order.plan"] = nextCursor;
-  state.stats.runs++;
-  state.stats.last_run_ts = Date.now();
-  writeJSON(stateFile, state);
-
   ctx.log(`[POLICY_ENGINE] ✅ approved=${state.stats.approved} blocked=${state.stats.blocked} human=${state.stats.human_required}`);
+
 }

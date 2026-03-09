@@ -132,16 +132,11 @@ export async function handler(ctx) {
   };
   const lookback = cfg.etherscan?.lookback_blocks ?? 25;
 
-  // Charger état (dédup + last_block)
-  const stateFile = path.join(ctx.stateDir, "memory", "WHALE_FEED.state.json");
-  const state     = readJSON(stateFile, {
-    agent_id: "WHALE_FEED", version: 1,
-    etherscan: { last_block: 0 },
-    dedup: { seen: {} },
-    stats: { runs: 0, errors: 0, last_run_ts: 0 },
-  });
-
-  if (!state.dedup?.seen) state.dedup = { seen: {} };
+  // Utiliser ctx.state (géré par agentRuntime)
+  const state = ctx.state;
+  if (!state.etherscan)      state.etherscan = { last_block: 0 };
+  if (!state.dedup)          state.dedup     = { seen: {} };
+  if (!state.dedup.seen)     state.dedup.seen = {};
   cleanOldEntries(state.dedup.seen);
 
   let published = 0;
@@ -157,9 +152,6 @@ export async function handler(ctx) {
 
     if (fromBlock > toBlock) {
       ctx.log(`[WHALE_FEED] Aucun nouveau bloc (from=${fromBlock} to=${toBlock})`);
-      state.stats.runs++;
-      state.stats.last_run_ts = Date.now();
-      writeJSON(stateFile, state);
       return;
     }
 
@@ -270,10 +262,10 @@ export async function handler(ctx) {
     errors++;
   }
 
-  state.stats.runs++;
-  state.stats.errors  += errors;
-  state.stats.last_run_ts = Date.now();
-  writeJSON(stateFile, state);
+  // Stats — agentRuntime sauvegarde ctx.state automatiquement
+  state.stats = state.stats ?? {};
+  state.stats.errors = (state.stats.errors ?? 0) + errors;
+  // runs et last_run_ts gérés par agentRuntime
 
   ctx.log(`[WHALE_FEED] ✅ ${published} événements publiés, ${errors} erreurs`);
 }

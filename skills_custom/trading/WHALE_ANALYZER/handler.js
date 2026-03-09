@@ -246,15 +246,7 @@ export async function handler(ctx) {
   const sets = loadAddressSets(ctx.stateDir);
   ctx.log(`[WHALE_ANALYZER] Adresses chargées : ${sets.exchangeAddrs.size} exchanges, ${sets.bridgeAddrs.size + sets.protocolAddrs.size} filtres, ${sets.mmAddrs.size} MM, ${sets.stableIssuers.size} issuers`);
 
-  const stateFile = path.join(ctx.stateDir, "memory", "WHALE_ANALYZER.state.json");
-  const state = readJSON(stateFile, {
-    agent_id:     "WHALE_ANALYZER",
-    version:      1,
-    cursors:      { "trading.raw.whale.transfer": 0 },
-    asset_memory: {},
-    stats:        { runs: 0, errors: 0, last_run_ts: 0 },
-  });
-
+  const state = ctx.state;
   if (!state.cursors)      state.cursors      = { "trading.raw.whale.transfer": 0 };
   if (!state.asset_memory) state.asset_memory = {};
 
@@ -348,10 +340,6 @@ export async function handler(ctx) {
     published++;
     ctx.log(`  🎯 ${asset} : ${bias} score=${score.toFixed(2)} conf=${confidence}`);
   }
-
-  state.stats.runs++;
-  state.stats.last_run_ts = Date.now();
-  writeJSON(stateFile, state);
 
   ctx.log(`[WHALE_ANALYZER] ✅ classifiés=${classified} filtrés=${filtered} signaux=${published}`);
 }
