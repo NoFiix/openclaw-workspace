@@ -56,7 +56,7 @@ async function callHaiku(apiKey, systemPrompt, userPrompt, stateDir = "") {
     });
     if (!res.ok) throw new Error(`Anthropic API HTTP ${res.status}`);
     const data = await res.json();
-    if (data.usage) logTokens(stateDir, "NEWS_SCORING", MODEL, data.usage, "news_score");1~if (data.usage) logTokens(stateDir, "NEWS_SCORING", MODEL, data.usage, "news_score");
+    if (data.usage) logTokens(stateDir, "NEWS_SCORING", MODEL, data.usage, "news_score");
     return data.content?.[0]?.text ?? null;
   } finally {
     clearTimeout(timer);
