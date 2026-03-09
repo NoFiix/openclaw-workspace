@@ -1,0 +1,8 @@
+{
+  "id": "trading.WHALE_FEED",
+  "name": "WHALE_FEED",
+  "entrypoint": "index.js",
+  "description": "Collecteur whale brut. Etherscan REST (ETH + USDT/USDC/WBTC). Zéro LLM. Publie trading.raw.whale.transfer.",
+  "permissions": { "net": true, "fs_state_read": true, "fs_state_write": true },
+  "env": ["ETHERSCAN_API_KEY"]
+}
