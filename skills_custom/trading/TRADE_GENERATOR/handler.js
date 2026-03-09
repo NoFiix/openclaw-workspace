@@ -130,7 +130,15 @@ Réponds UNIQUEMENT en JSON valide. Aucun texte avant ou après.`;
   }
 }
 
-function buildUserPrompt(symbol, f5m, f1h, f4h, regime, recentNews = [], strategies = [], perfData = {}) {
+## Contexte Whale (consultatif — confluence uniquement)
+${whaleContext
+  ? `- Bias: ${whaleContext.bias} | Force: ${whaleContext.strength} | Score: ${whaleContext.whale_flow_score} | Confiance: ${whaleContext.confidence}
+- Drivers: ${whaleContext.drivers?.join(", ") || "aucun"}
+- Note: Contexte consultatif. Ajuste légèrement la lecture, ne justifie pas un trade seul.`
+  : "Aucun contexte whale disponible — ignorer ce facteur"
+}
+
+function buildUserPrompt(symbol, f5m, f1h, f4h, regime, recentNews = [], strategies = [], perfData = {}, whaleContext = null) {
   const stratList = formatStrategiesForPrompt(strategies, perfData);
   return `Analyse les données suivantes et génère une TradeProposal pour ${symbol}.
 
@@ -333,6 +341,10 @@ export async function handler(ctx) {
 
   ctx.log(`📊 Régime: ${regime.regime} (conf=${regime.confidence})`);
 
+  const whaleContext = regime.whale_context ?? null;
+  if (whaleContext) {
+    ctx.log(`🐋 Whale context: ${whaleContext.bias} (score=${whaleContext.whale_flow_score} force=${whaleContext.strength})`);
+  }
 
   // Soul TRADE_GENERATOR
   const soulPath = path.join(
@@ -377,7 +389,7 @@ export async function handler(ctx) {
         const pf = path.join(ctx.stateDir, "learning", "strategy_performance.json");
         perfData = JSON.parse(fs.readFileSync(pf, "utf-8"));
       } catch {}
-      const userPrompt = buildUserPrompt(symbol, f5m, f1h, f4h, regime, recentNews, strategies, perfData);
+      const userPrompt = buildUserPrompt(symbol, f5m, f1h, f4h, regime, recentNews, strategies, perfData, whaleContext);
       const raw = await callHaiku(apiKey, systemPrompt, userPrompt, ctx.stateDir);
 
       if (!raw) { ctx.log(`⚠️ ${symbol}: réponse vide Haiku`); continue; }
@@ -400,6 +412,24 @@ export async function handler(ctx) {
         if (errors.some(e => e.includes("stop"))) {
           proposal.side = "HOLD";
           proposal.reasons = [...(proposal.reasons ?? []), "AUTO_HOLD: stop manquant"];
+        }
+      }
+
+      // Ajustement whale consultatif — ±0.07 max
+      if (whaleContext && proposal.side !== "HOLD") {
+        const score     = whaleContext.whale_flow_score ?? 0;
+        const wConf     = whaleContext.confidence ?? 0;
+        const strength  = whaleContext.strength ?? 0;
+        const IMPACT    = 0.07;
+        const delta     = parseFloat((score * wConf * strength * IMPACT * 10).toFixed(3));
+        const clamped   = parseFloat(Math.max(0, Math.min(1, proposal.confidence + delta)).toFixed(3));
+        if (Math.abs(delta) > 0.001) {
+          ctx.log(`  🐋 whale delta=${delta > 0 ? "+" : ""}${delta} → confidence ${proposal.confidence} → ${clamped}`);
+          proposal.confidence = clamped;
+          proposal.reasons = [
+            ...(proposal.reasons ?? []),
+            `whale_${whaleContext.bias.toLowerCase()}_score=${whaleContext.whale_flow_score}`,
+          ];
         }
       }
 
