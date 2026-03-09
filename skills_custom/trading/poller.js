@@ -9,7 +9,7 @@
 
 import fs   from "fs";
 import path from "path";
-import { execFile } from "child_process";
+import { spawn } from "child_process";
 import { randomUUID } from "crypto";
 
 const STATE_DIR     = process.env.STATE_DIR     ?? "/home/node/.openclaw/workspace/state/trading";
@@ -54,14 +54,26 @@ function runAgent(agentId, runId) {
       return resolve({ ok: false, reason: "skill_not_found" });
     }
 
-    const child = execFile("node", ["--experimental-vm-modules", skillPath, "--input", payloadPath], {
+    const child = spawn("node", ["--experimental-vm-modules", skillPath, "--input", payloadPath], {
       env: { ...process.env, STATE_DIR, WORKSPACE_DIR, TRADING_ENV },
-      timeout: 30000,
+      stdio: ["ignore", "pipe", "pipe"],
     });
+    let settled = false;
+    const settle = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(killTimer);
+      resolve(result);
+    };
+    const killTimer = setTimeout(() => {
+      try { child.kill("SIGKILL"); } catch {}
+      settle({ ok: false, code: null, timeout: true });
+    }, 35000);
+    child.stdout?.pipe(process.stdout, { end: false });
+    child.stderr?.pipe(process.stderr, { end: false });
+    child.on("exit", (code) => settle({ ok: code === 0, code }));
+    child.on("error", (err) => settle({ ok: false, code: null, error: err.message }));
 
-    child.stdout?.pipe(process.stdout);
-    child.stderr?.pipe(process.stderr);
-    child.on("exit", code => resolve({ ok: code === 0, code }));
   });
 }
 
