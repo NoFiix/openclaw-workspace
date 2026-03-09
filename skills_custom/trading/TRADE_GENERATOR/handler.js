@@ -130,13 +130,6 @@ Réponds UNIQUEMENT en JSON valide. Aucun texte avant ou après.`;
   }
 }
 
-## Contexte Whale (consultatif — confluence uniquement)
-${whaleContext
-  ? `- Bias: ${whaleContext.bias} | Force: ${whaleContext.strength} | Score: ${whaleContext.whale_flow_score} | Confiance: ${whaleContext.confidence}
-- Drivers: ${whaleContext.drivers?.join(", ") || "aucun"}
-- Note: Contexte consultatif. Ajuste légèrement la lecture, ne justifie pas un trade seul.`
-  : "Aucun contexte whale disponible — ignorer ce facteur"
-}
 
 function buildUserPrompt(symbol, f5m, f1h, f4h, regime, recentNews = [], strategies = [], perfData = {}, whaleContext = null) {
   const stratList = formatStrategiesForPrompt(strategies, perfData);
@@ -185,6 +178,14 @@ ${recentNews.length === 0
 ${recentNews.some(n => n.urgency >= 8 && n.reliability?.score >= 0.7)
   ? "⚡ NEWS CRITIQUE DÉTECTÉE — considérer strategy=NewsTrading si concordant avec les indicateurs"
   : "Pas de news critique dans la fenêtre"
+}
+
+## Contexte Whale (consultatif — confluence uniquement)
+${whaleContext
+  ? `- Bias: ${whaleContext.bias} | Force: ${whaleContext.strength} | Score: ${whaleContext.whale_flow_score} | Confiance: ${whaleContext.confidence}
+- Drivers: ${whaleContext.drivers?.join(", ") || "aucun"}
+- Note: Contexte consultatif. Ajuste légèrement la lecture, ne justifie pas un trade seul.`
+  : "Aucun contexte whale disponible — ignorer ce facteur"
 }
 
 ## Stratégies disponibles (choisis parmi celles-ci uniquement)
