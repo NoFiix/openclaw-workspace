@@ -248,10 +248,10 @@ export async function handler(ctx) {
     }
   }
 
-  // ── 2. Nouvelles proposals validées par RISK_MANAGER ─────────────────
-  const cursor = ctx.state.cursors?.order_plan ?? 0;
+  // ── 2. Ordres approuvés par POLICY_ENGINE + TRADING_ORCHESTRATOR ─────────────────
+  const cursor = ctx.state.cursors?.order_submit ?? 0;
   const { events: plans, nextCursor } =
-    ctx.bus.readSince("trading.strategy.order.plan", cursor, 10);
+    ctx.bus.readSince("trading.exec.order.submit", cursor, 10);
 
   for (const event of plans) {
     const plan = event.payload;
@@ -344,7 +344,7 @@ export async function handler(ctx) {
     await new Promise(r => setTimeout(r, 300));
   }
 
-  ctx.state.cursors = { ...ctx.state.cursors, order_plan: nextCursor };
+  ctx.state.cursors = { ...ctx.state.cursors, order_submit: nextCursor };
 
   // Sauvegarder les positions
   writeJSON(posFile, stillOpen);
