@@ -1,0 +1,8 @@
+{
+  "id": "trading.TRADE_STRATEGY_TUNER",
+  "name": "TRADE_STRATEGY_TUNER",
+  "entrypoint": "index.js",
+  "description": "Optimise itérativement les paramètres des stratégies en état optimizing (20-50 trades, score 0.40-0.60). Max 3 itérations par stratégie. Rollback automatique si régression. Utilise Sonnet pour l'analyse des trades perdants.",
+  "permissions": { "net": true, "fs_state_read": true, "fs_state_write": true },
+  "env": ["ANTHROPIC_API_KEY", "TRADER_TELEGRAM_BOT_TOKEN", "TRADER_TELEGRAM_CHAT_ID"]
+}
