@@ -1,6 +1,6 @@
 /**
  * MARKET_EYE v2 — Handler
- * Calcule les indicateurs techniques sur 3 timeframes : 1m, 1h, 4h
+ * Calcule les indicateurs techniques sur 3 timeframes : 5m, 1h, 4h
  * Émet : trading.intel.market.features (un event par symbol par timeframe)
  * Pas de LLM. Pure maths.
  */
@@ -8,7 +8,7 @@
 const BINANCE_BASE = "https://api.binance.com";
 const SYMBOLS      = ["BTCUSDT", "ETHUSDT", "BNBUSDT"];
 const TIMEFRAMES   = [
-  { interval: "1m",  limit: 100, label: "1m"  },
+  { interval: "5m",  limit: 100, label: "5m"  },
   { interval: "1h",  limit: 100, label: "1h"  },
   { interval: "4h",  limit: 100, label: "4h"  },
 ];

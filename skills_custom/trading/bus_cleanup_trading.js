@@ -23,7 +23,7 @@ const RETENTION = {
   "trading_intel_price_feed":           1  * DAY,   // 24h — tick brut inutile après
   "trading_raw_market_ticker":          1  * DAY,   // 24h
   "trading_raw_market_ohlcv":           0.25 * DAY,   // 24h — remplacé par ohlcv structuré
-  "trading_intel_market_features":      3  * DAY,   // 72h — debug + comparaison hier/aujourd'hui
+  "trading_intel_market_features":      2  * DAY,   // 48h — 2 jours suffisent pour la granularité 5m
   "trading_exec_position_snapshot":     30 * DAY,   // 30j — snapshots positions
 
   // ── Layer 2 — Context (comprendre le marché) ──────────────────────────

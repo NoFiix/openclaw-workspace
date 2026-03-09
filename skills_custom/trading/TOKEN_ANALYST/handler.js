@@ -41,8 +41,8 @@ export async function handler(ctx) {
   const hour = now.getUTCHours();
   const today = now.toISOString().slice(0, 10);
 
-  if (day !== 1 || hour < 8 || hour >= 9) {
-    ctx.log(`⏭  TOKEN_ANALYST tourne uniquement lundi 8h UTC (aujourd'hui: jour=${day} heure=${hour})`);
+  if ((day !== 1 && day !== 4) || hour < 8 || hour >= 9) {
+    ctx.log(`⏭  TOKEN_ANALYST tourne lundi et jeudi 8h UTC (aujourd'hui: jour=${day} heure=${hour})`);
     return;
   }
   if (ctx.state.last_run_date === today) {
