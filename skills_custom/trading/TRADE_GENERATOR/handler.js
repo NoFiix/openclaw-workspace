@@ -20,7 +20,10 @@ const COOLDOWN_MS   = 30 * 60 * 1000; // 30 minutes par asset
 // ─── Helpers bus ──────────────────────────────────────────────────────────
 
 function getLastEvent(bus, topic, filterFn, limit = 5000) {
-  const { events } = bus.readSince(topic, 0, limit);
+  // Lire depuis la fin du fichier pour avoir les events récents
+  const total  = bus.count(topic);
+  const cursor = Math.max(0, total - limit);
+  const { events } = bus.readSince(topic, cursor, limit);
   const filtered   = events.filter(filterFn);
   return filtered.length > 0 ? filtered[filtered.length - 1] : null;
 }
@@ -127,7 +130,7 @@ Réponds UNIQUEMENT en JSON valide. Aucun texte avant ou après.`;
   }
 }
 
-function buildUserPrompt(symbol, f1m, f1h, f4h, regime, recentNews = [], strategies = [], perfData = {}) {
+function buildUserPrompt(symbol, f5m, f1h, f4h, regime, recentNews = [], strategies = [], perfData = {}) {
   const stratList = formatStrategiesForPrompt(strategies, perfData);
   return `Analyse les données suivantes et génère une TradeProposal pour ${symbol}.
 
@@ -140,12 +143,12 @@ function buildUserPrompt(symbol, f1m, f1h, f4h, regime, recentNews = [], strateg
 ## Indicateurs techniques
 
 ### 1m (court terme — bruit)
-- Prix: ${f1m?.price ?? "N/A"}
-- RSI_14: ${f1m?.rsi_14 ?? "N/A"}
-- BB_pct_b: ${f1m?.bb_pct_b ?? "N/A"} (0=lower band, 1=upper band)
-- MACD_hist: ${f1m?.macd_histogram ?? "N/A"}
-- Volume_zscore: ${f1m?.volume_zscore ?? "N/A"}
-- Trend_strength: ${f1m?.trend_strength ?? "N/A"}
+- Prix: ${f5m?.price ?? "N/A"}
+- RSI_14: ${f5m?.rsi_14 ?? "N/A"}
+- BB_pct_b: ${f5m?.bb_pct_b ?? "N/A"} (0=lower band, 1=upper band)
+- MACD_hist: ${f5m?.macd_histogram ?? "N/A"}
+- Volume_zscore: ${f5m?.volume_zscore ?? "N/A"}
+- Trend_strength: ${f5m?.trend_strength ?? "N/A"}
 
 ### 1h (signal principal)
 - RSI_14: ${f1h?.rsi_14 ?? "N/A"}
@@ -265,6 +268,51 @@ function validateProposal(p, symbol) {
 
 // ─── Handler ──────────────────────────────────────────────────────────────
 
+
+// ─── Filtre pré-Haiku — évite les appels inutiles ─────────────────────────
+// Retourne true si au minimum 1 stratégie a des conditions d'entrée plausibles.
+// EXTENSIBLE : ajouter un bloc par nouvelle stratégie.
+function hasSignal(f5m, f1h, f4h, regime) {
+  const r = regime?.regime ?? "UNKNOWN";
+  const conf = regime?.confidence ?? 0;
+
+  // Régimes bloquants — aucune stratégie actuelle ne trade en UNKNOWN
+  if (r === "UNKNOWN") return false;
+
+  // En PANIC : uniquement si on a une stratégie dédiée (pas encore implémentée)
+  if (r === "PANIC") return false;
+
+  // ── MeanReversion : RSI extrême + BB aux bandes ──────────────────────────
+  const rsi1m  = f5m?.rsi_14    ?? 50;
+  const bb1m   = f5m?.bb_pct_b  ?? 0.5;
+  const rsi1h  = f1h?.rsi_14    ?? 50;
+  const bb1h   = f1h?.bb_pct_b  ?? 0.5;
+  const meanRevSignal =
+    (rsi1m < 35 || rsi1m > 65) &&
+    (bb1m < 0.15 || bb1m > 0.85) &&
+    (rsi1h < 40 || rsi1h > 60);
+
+  // ── Momentum : MACD histogram fort sur 1h + 4h concordants ──────────────
+  const macd1h = Math.abs(f1h?.macd_histogram ?? 0);
+  const macd4h = Math.abs(f4h?.macd_histogram ?? 0);
+  const macd1hSign = Math.sign(f1h?.macd_histogram ?? 0);
+  const macd4hSign = Math.sign(f4h?.macd_histogram ?? 0);
+  const momentumSignal =
+    macd1h > 0 &&
+    macd4h > 0 &&
+    macd1hSign === macd4hSign && // même direction
+    (r === "TREND_UP" || r === "TREND_DOWN");
+
+  // ── Breakout : BB très serré sur 1h (squeeze) → explosion imminente ──────
+  const bbWidth1h = f1h?.bb_width ?? 999;
+  const breakoutSignal = bbWidth1h < 0.02; // bandes très serrées
+
+  // ── NewsMomentum (futur) : placeholder ───────────────────────────────────
+  // const newsMomentumSignal = false; // à implémenter Sprint futur
+
+  return meanRevSignal || momentumSignal || breakoutSignal;
+}
+
 export async function handler(ctx) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) { ctx.log("❌ ANTHROPIC_API_KEY manquant"); return; }
@@ -306,15 +354,19 @@ export async function handler(ctx) {
     }
 
     // Features
-    const f1m = getFeatures(ctx.bus, symbol, "1m");
+    const f5m = getFeatures(ctx.bus, symbol, "5m");
     const f1h = getFeatures(ctx.bus, symbol, "1h");
     const f4h = getFeatures(ctx.bus, symbol, "4h");
 
-    if (!f1m || !f1h || !f4h) {
-      ctx.log(`⚠️ ${symbol}: features incomplètes (1m=${!!f1m} 1h=${!!f1h} 4h=${!!f4h})`);
+    if (!f5m || !f1h || !f4h) {
+      ctx.log(`⚠️ ${symbol}: features incomplètes (5m=${!!f5m} 1h=${!!f1h} 4h=${!!f4h})`);
       continue;
     }
-
+    // Filtre pré-Haiku
+    if (!hasSignal(f5m, f1h, f4h, regime)) {
+      ctx.log(`⚪ ${symbol}: pas de signal — skip Haiku`);
+      continue;
+    }
     ctx.log(`🤔 ${symbol}: génération proposal...`);
 
     try {
@@ -325,7 +377,7 @@ export async function handler(ctx) {
         const pf = path.join(ctx.stateDir, "learning", "strategy_performance.json");
         perfData = JSON.parse(fs.readFileSync(pf, "utf-8"));
       } catch {}
-      const userPrompt = buildUserPrompt(symbol, f1m, f1h, f4h, regime, recentNews, strategies, perfData);
+      const userPrompt = buildUserPrompt(symbol, f5m, f1h, f4h, regime, recentNews, strategies, perfData);
       const raw = await callHaiku(apiKey, systemPrompt, userPrompt, ctx.stateDir);
 
       if (!raw) { ctx.log(`⚠️ ${symbol}: réponse vide Haiku`); continue; }

@@ -166,6 +166,7 @@ export async function handler(ctx) {
           bb_mid:         bb?.mid         ?? null,
           bb_std:         bb?.std         ?? null,
           bb_pct_b:       bb?.pct_b       ?? null,
+          bb_width:       bb?.upper && bb?.lower && candles.length > 0 ? (bb.upper - bb.lower) / candles[candles.length-1][4] : null,
           atr_14:         atr,
           macd:           macd?.macd      ?? null,
           macd_signal:    macd?.signal    ?? null,
