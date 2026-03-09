@@ -208,10 +208,10 @@ export async function handler(ctx) {
 
           // Émettre dans le ledger
           ctx.emit("trading.exec.trade.ledger", "exec.trade.ledger.v1",
-            { agent_id: "TESTNET_EXECUTOR" },
-            { asset: pos.symbol },
-            closedPos
-          );
+	    { agent_id: "TESTNET_EXECUTOR" },
+	    closedPos,
+  	    { asset: pos.symbol }
+	  );
 
           // Mettre à jour le PnL journalier
           dailyPnl[today] = parseFloat(((dailyPnl[today] ?? 0) + pnlUSD).toFixed(2));
@@ -325,11 +325,11 @@ export async function handler(ctx) {
       stillOpen.push(pos);
 
       // Émettre snapshot
-      ctx.emit("trading.exec.position.snapshot", "exec.position.snapshot.v1",
-        { agent_id: "TESTNET_EXECUTOR" },
-        { asset: plan.symbol },
-        pos
-      );
+	ctx.emit("trading.exec.position.snapshot", "exec.position.snapshot.v1",
+	  { agent_id: "TESTNET_EXECUTOR" },
+	  pos,
+ 	  { asset: plan.symbol }
+	);
 
       ctx.log(
         `🟢 OPEN ${plan.symbol} ${plan.side} @ $${entryFill} ` +
@@ -351,8 +351,9 @@ export async function handler(ctx) {
 
   // Émettre snapshot global
   ctx.emit("trading.exec.position.snapshot", "exec.position.snapshot.v1",
-    { agent_id: "TESTNET_EXECUTOR" }, {},
-    { positions: stillOpen, count: stillOpen.length, updated_at: Date.now() }
+    { agent_id: "TESTNET_EXECUTOR" },
+    { positions: stillOpen, count: stillOpen.length, updated_at: Date.now() },
+    {}
   );
 
   ctx.log(`✅ ${stillOpen.length} position(s) ouverte(s) — PnL jour: $${dailyPnl[today] ?? 0}`);
