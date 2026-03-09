@@ -174,11 +174,65 @@ function aggregateRegimes(symbolRegimes) {
   return { globalRegime, globalConfidence, divergence, votes };
 }
 
+// ─── Whale context depuis bus ─────────────────────────────────────────────
+
+function getWhaleSignalFromBus(bus) {
+  // Prend le signal whale le plus récent toutes assets confondues
+  // REGIME_DETECTOR travaille au niveau marché global, pas par asset
+  const { events } = bus.readSince("trading.intel.whale.signal", 0, 500);
+  if (!events.length) return null;
+  // Prioriser ETH comme proxy du marché EVM, sinon le plus récent
+  const ethSignal = [...events].reverse().find(e => e.payload?.asset === "ETH");
+  return (ethSignal ?? events[events.length - 1])?.payload ?? null;
+}
+
+function buildWhaleContext(whaleSignal) {
+  if (!whaleSignal) {
+    return {
+      bias: "NEUTRAL", strength: 0, confidence: 0,
+      window: "6h", drivers: [], whale_flow_score: 0,
+    };
+  }
+
+  const score = whaleSignal.whale_flow_score ?? 0;
+
+  // Mapping score → bias
+  let bias;
+  if      (score >=  0.30) bias = "ACCUMULATION";
+  else if (score <= -0.30) bias = "DISTRIBUTION";
+  else if (Math.abs(score) < 0.15) bias = "NEUTRAL";
+  else                     bias = "MIXED";
+
+  // Drivers depuis components
+  const c = whaleSignal.components ?? {};
+  const drivers = [];
+  if ((c.from_exchange_count ?? 0) > 0)                                    drivers.push("exchange_outflows");
+  if ((c.to_exchange_count ?? 0) > 0)                                      drivers.push("exchange_inflows");
+  if ((c.stable_inflow_count ?? 0) + (c.stable_to_exchange_count ?? 0) > 0) drivers.push("stable_inflow");
+  if ((c.stable_mint_count ?? 0) > 0)                                      drivers.push("stable_mint");
+  if ((c.dex_whale_buy_count ?? 0) > 0)                                    drivers.push("dex_whale_buy");
+  if ((c.dex_whale_sell_count ?? 0) > 0)                                   drivers.push("dex_whale_sell");
+
+  return {
+    bias,
+    strength:        parseFloat(Math.min(Math.abs(score), 1.0).toFixed(3)),
+    confidence:      whaleSignal.confidence ?? 0,
+    window:          whaleSignal.window ?? "6h",
+    drivers,
+    whale_flow_score: parseFloat(score.toFixed(3)),
+  };
+}
+
 // ─── Handler ──────────────────────────────────────────────────────────────
 
 export async function handler(ctx) {
   const symbolRegimes = [];
   const bySymbol      = {};
+
+  // Whale context — lecture unique pour tout le marché
+  const whaleSignal  = getWhaleSignalFromBus(ctx.bus);
+  const whaleContext = buildWhaleContext(whaleSignal);
+  ctx.log(`🐋 Whale context: ${whaleContext.bias} (score=${whaleContext.whale_flow_score} conf=${whaleContext.confidence})`);
 
   for (const symbol of SYMBOLS) {
     // Lire les derniers features pour chaque timeframe depuis le bus
@@ -237,7 +291,7 @@ export async function handler(ctx) {
 
   ctx.emit(
     "trading.intel.regime",
-    "intel.regime.v1",
+    "intel.regime.v2",
     { asset: "MARKET" },
     {
       regime:      globalRegime,
@@ -245,6 +299,7 @@ export async function handler(ctx) {
       divergence,
       by_symbol:   bySymbol,
       votes,
+      whale_context: whaleContext,
       ts:          Date.now(),
     }
   );
