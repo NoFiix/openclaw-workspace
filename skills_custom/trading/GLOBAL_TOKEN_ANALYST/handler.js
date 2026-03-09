@@ -30,8 +30,8 @@ async function sendTelegram(token, chatId, text) {
 
 export async function handler(ctx) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  const token  = process.env.TRADER_TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TRADER_TELEGRAM_CHAT_ID;
+  const token  = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
 
   if (!apiKey) { ctx.log("❌ ANTHROPIC_API_KEY manquant"); return; }
 
@@ -140,12 +140,35 @@ Réponds en JSON strict :
         .map(o => `• *${o.agent}*: ${o.fix} (-${o.saving_pct}%)`)
         .join("\n");
 
+    // Top consommateurs depuis token_summary
+    const byAgent  = summary.by_agent  ?? {};
+    const bySystem = summary.by_system ?? {};
+    const totalCost = summary.global?.total_cost_usd ?? 0;
+
+    const topAgents = Object.values(byAgent)
+      .sort((a, b) => b.cost_usd - a.cost_usd)
+      .slice(0, 5)
+      .map((a, i) => {
+        const pct = totalCost > 0 ? Math.round(a.cost_usd / totalCost * 100) : 0;
+        return `${i + 1}. *${a.agent}* — $${a.cost_usd.toFixed(4)} (${pct}%)`;
+      })
+      .join("\n");
+
+    const sysBySystem = Object.entries(bySystem)
+      .sort((a, b) => b[1].cost_usd - a[1].cost_usd)
+      .map(([sys, d]) => `• ${sys}: $${d.cost_usd.toFixed(4)}`)
+      .join("\n");
+
       const msg =
 `🤖 *TOKEN ANALYST — Rapport hebdomadaire*
 
 💰 Coût semaine : *$${analysis.total_cost_usd}*
 📈 Projection mois : *$${analysis.monthly_projection_usd}*
 🔝 Plus gros consommateur : *${analysis.biggest_spender}*
+
+${topAgents}
+
+${sysBySystem}
 
 ${opts ? `⚡ Optimisations prioritaires :\n${opts}` : "✅ Aucune optimisation critique"}
 
