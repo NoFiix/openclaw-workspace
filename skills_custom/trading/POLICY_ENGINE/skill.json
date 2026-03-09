@@ -1,0 +1,8 @@
+{
+  "id": "trading.POLICY_ENGINE",
+  "name": "POLICY_ENGINE",
+  "entrypoint": "index.js",
+  "description": "Vérifie qu'un order.plan respecte les règles du système. Produit APPROVED/BLOCKED/HUMAN_APPROVAL_REQUIRED. Zéro LLM.",
+  "permissions": { "fs_state_read": true, "fs_state_write": true },
+  "env": ["TRADING_ENV"]
+}
