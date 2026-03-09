@@ -1,5 +1,5 @@
 /**
- * STRATEGY_TUNER — Handler
+ * STRATEGY_GATEKEEPER — Handler
  * Lit strategy_performance.json et strategy_candidates.json.
  * Applique les règles de scoring pondéré pour activer/désactiver les stratégies.
  * Met à jour strategy_candidates.json (status: candidate → active | rejected | testing).
@@ -43,7 +43,7 @@ async function sendTelegram(token, chatId, text) {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
   } catch (e) {
-    console.error("[STRATEGY_TUNER] Telegram error:", e.message);
+    console.error("[STRATEGY_GATEKEEPER] Telegram error:", e.message);
   }
 }
 
@@ -199,7 +199,7 @@ export async function handler(ctx) {
       }[c.new_status] ?? c.new_status;
 
       const msg =
-`🤖 *STRATEGY_TUNER*
+`🤖 *STRATEGY_GATEKEEPER*
 
 ${statusLabel} — *${c.name}*
 
