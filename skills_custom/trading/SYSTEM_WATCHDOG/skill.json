@@ -1,0 +1,7 @@
+{
+  "id": "SYSTEM_WATCHDOG",
+  "name": "System Watchdog",
+  "version": "3.0.0",
+  "description": "Health monitoring for OpenClaw runtime, agents, storage, logs, and trading pipeline.",
+  "entry": "index.js"
+}

@@ -1,0 +1,19 @@
+{
+  "schedule_minutes": 15,
+  "daily_summary_hour_utc": 8,
+  "skip_agents": ["GLOBAL_TOKEN_ANALYST", "GLOBAL_TOKEN_TRACKER", "PAPER_EXECUTOR"],
+  "thresholds": {
+    "poller_log_mb": 50,
+    "bus_dir_mb": 400,
+    "state_dir_mb": 800,
+    "disk_free_pct_warn": 20,
+    "disk_free_pct_crit": 10,
+    "agent_stale_factor_warn": 10,
+    "agent_stale_factor_crit": 30,
+    "kill_switch_armed_warn_hours": 12,
+    "no_trade_warn_hours": 48,
+    "poller_error_threshold": 3,
+    "reminder_cooldown_ms": 3600000,
+    "reminder_second_cooldown_ms": 21600000
+  }
+}

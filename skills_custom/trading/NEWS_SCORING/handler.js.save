@@ -235,6 +235,5 @@ export async function handler(ctx) {
     news_articles:  items.length > 0 ? nextArticleCursor : articleCursor,
   };
 
-  ctx.log(`✅ ${scored} events émis | ${alerts} alertes Telegram`);
-  process.exit(0);
+  
 }
