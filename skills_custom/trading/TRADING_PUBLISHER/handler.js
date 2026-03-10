@@ -224,7 +224,7 @@ ${worst ? `\nPire trade\n${worst.symbol.replace("USDT","")} ${worst.pnl_pct?.toF
 📊 Profit Factor : ${data.profit_factor?.toFixed(2) ?? "—"}
 
 ${stratSummary ? `\n🔬 Stratégies\n${stratSummary}\n` : ""}
-⚠️ PAPER TRADING\`
+⚠️ PAPER TRADING`
   );
 }
 
@@ -251,7 +251,7 @@ ${worst ? `\nPire trade\n${worst.symbol.replace("USDT","")} ${worst.pnl_pct?.toF
 📊 Profit Factor : ${data.profit_factor?.toFixed(2) ?? "—"}
 
 ${stratSummary ? `\n🔬 Stratégies semaine\n${stratSummary}\n` : ""}
-⚠️ PAPER TRADING\`
+⚠️ PAPER TRADING`
   );
 }
 
