@@ -8,3 +8,14 @@ agents/*/memory/
 .env
 USER.md
 CONTEXT_BUNDLE_*.md
+
+# Dashboard
+dashboard/api/.env
+dashboard-data/
+
+# Fichiers architecture sensibles
+docs/CONTENT_FACTORY_ARCHITECTURE.md
+docs/TRADING_ARCHITECTURE.md
+CONTEXT_BUNDLE_CONTENT.md
+CONTEXT_BUNDLE_TRADING.md
+CONTEXT_BUNDLE_INFRA.md
