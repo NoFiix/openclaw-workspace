@@ -135,6 +135,7 @@ export async function handler(ctx) {
   // Utiliser ctx.state (géré par agentRuntime)
   const state = ctx.state;
   if (!state.etherscan)      state.etherscan = { last_block: 0 };
+  if (state.etherscan.last_block === null || state.etherscan.last_block === undefined) state.etherscan.last_block = 0;
   if (!state.dedup)          state.dedup     = { seen: {} };
   if (!state.dedup.seen)     state.dedup.seen = {};
   cleanOldEntries(state.dedup.seen);
