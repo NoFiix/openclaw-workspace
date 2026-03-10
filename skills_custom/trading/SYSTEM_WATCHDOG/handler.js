@@ -62,6 +62,10 @@ const AGENT_INFO = {
   builder:               { desc: "Orchestre la selection et la validation des articles a publier", to: "copywriter, publisher" },
   performance_analyst:   { desc: "Analyse les performances des posts publies (engagement, portee)", to: "strategy_tuner" },
   news_scoring:          { desc: "Score la pertinence des articles scrapes pour la communaute CryptoRizon", to: "builder" },
+
+  // ── Agents systeme ───────────────────────────────────────────────────────────
+  SYSTEM_WATCHDOG:       { desc: "Surveille la sante de tout le systeme OpenClaw toutes les 15min et alerte sur @OppenCllawBot", to: "Telegram @OppenCllawBot" },
+  LEARNER:               { desc: "Analyse les trades perdus/gagnes, detecte les patterns, propose des ameliorations actionnables", to: "STRATEGY_RESEARCHER, TRADE_STRATEGY_TUNER" },
 };
 
 // ─── Utilitaires ──────────────────────────────────────────────────────────────
