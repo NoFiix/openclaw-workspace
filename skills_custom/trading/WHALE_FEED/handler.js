@@ -15,7 +15,7 @@
 import fs   from "fs";
 import path from "path";
 
-const ETHERSCAN_BASE = "https://api.etherscan.io/api";
+const ETHERSCAN_BASE = "https://api.etherscan.io/v2/api";
 const TIMEOUT_MS     = 10000;
 
 // Adresses ERC20 à surveiller
@@ -87,7 +87,7 @@ async function getEthPriceUsd() {
 
 async function getCurrentBlock(apiKey) {
   const data = await fetchWithTimeout(
-    `${ETHERSCAN_BASE}?module=proxy&action=eth_blockNumber&apikey=${apiKey}`
+    `${ETHERSCAN_BASE}?chainid=1&module=proxy&action=eth_blockNumber&apikey=${apiKey}`
   );
   return parseInt(data.result, 16);
 }
@@ -95,7 +95,7 @@ async function getCurrentBlock(apiKey) {
 // ─── Etherscan — transferts ETH natifs ───────────────────────────────────────
 
 async function fetchEthTransfers(apiKey, fromBlock, toBlock) {
-  const url = `${ETHERSCAN_BASE}?module=account&action=txlist` +
+  const url = `${ETHERSCAN_BASE}?chainid=1&module=account&action=txlist` +
     `&startblock=${fromBlock}&endblock=${toBlock}` +
     `&sort=desc&page=1&offset=100&apikey=${apiKey}`;
   const data = await fetchWithTimeout(url);
@@ -106,7 +106,7 @@ async function fetchEthTransfers(apiKey, fromBlock, toBlock) {
 // ─── Etherscan — transferts ERC20 ────────────────────────────────────────────
 
 async function fetchERC20Transfers(apiKey, contractAddress, fromBlock, toBlock) {
-  const url = `${ETHERSCAN_BASE}?module=account&action=tokentx` +
+  const url = `${ETHERSCAN_BASE}?chainid=1&module=account&action=tokentx` +
     `&contractaddress=${contractAddress}` +
     `&startblock=${fromBlock}&endblock=${toBlock}` +
     `&sort=desc&page=1&offset=100&apikey=${apiKey}`;
