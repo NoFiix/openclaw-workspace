@@ -14,8 +14,9 @@ sleep 3
 REMAINING=$(docker exec $CONTAINER ps aux | grep "trading/poller" | grep -v grep | wc -l)
 echo "[restart_poller] Pollers restants après kill: $REMAINING"
 
-# Relancer un seul
-docker exec -d $CONTAINER node $POLLER_PATH
+# Relancer un seul — stdout/stderr redirigés vers poller.log
+LOG_PATH="/home/node/.openclaw/workspace/state/trading/poller.log"
+docker exec -d $CONTAINER sh -c "node $POLLER_PATH >> $LOG_PATH 2>&1"
 sleep 2
 
 # Vérification finale
