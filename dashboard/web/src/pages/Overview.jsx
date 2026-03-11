@@ -1,268 +1,251 @@
-import React, { useCallback } from 'react';
-import {
-  ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid
-} from 'recharts';
+import { useCallback } from 'react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from 'recharts';
 import { api } from '../api/client';
-import { useApiData, fmtUSD, fmtPct, timeAgo } from '../hooks';
-import {
-  LoadingState, ErrorState, SectionTitle, MetricCard,
-  Badge, Card, KillSwitchBanner, LastUpdated, PulseDot
-} from '../components/UI';
+import { useApiData, fmtUSD, timeAgo } from '../hooks';
+import { LoadingState, ErrorState, SectionTitle, MetricCard, Card, Badge, LastUpdated } from '../components/UI';
 
-const fetchAll = async () => {
-  const [health, trading, costs, content] = await Promise.all([
-    api.health(),
-    api.trading(),
-    api.costs(),
-    api.content(),
-  ]);
-  return { health, trading, costs, content };
-};
-
-function CustomTooltip({ active, payload, label }) {
+const TT = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div style={{
-      background: 'var(--bg-elevated)',
-      border: '1px solid var(--border)',
-      padding: '8px 12px',
-      fontFamily: 'var(--font-mono)',
-      fontSize: 11,
-    }}>
+    <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', padding: '8px 12px', fontFamily: 'var(--font-mono)', fontSize: 10 }}>
       <div style={{ color: 'var(--text-secondary)', marginBottom: 4 }}>{label}</div>
-      {payload.map((p) => (
-        <div key={p.dataKey} style={{ color: p.color }}>
-          {p.name}: {fmtUSD(p.value)}
+      {payload.map(p => (
+        <div key={p.dataKey} style={{ color: (p.value ?? 0) >= 0 ? 'var(--green)' : 'var(--red)' }}>
+          PnL: {fmtUSD(p.value)}
         </div>
       ))}
     </div>
   );
-}
+};
+
+const TH = ({ children }) => (
+  <th style={{ textAlign: 'left', padding: '5px 8px', fontSize: 8, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
+    {children}
+  </th>
+);
+const TD = ({ children, style }) => (
+  <td style={{ padding: '7px 8px', fontFamily: 'var(--font-mono)', fontSize: 11, verticalAlign: 'middle', ...style }}>
+    {children}
+  </td>
+);
 
 export default function Overview() {
-  const fetch = useCallback(fetchAll, []);
-  const { data, error, loading, refresh, lastUpdated } = useApiData(fetch, 30000);
+  const fetchHealth  = useCallback(() => api.health(),         []);
+  const fetchTrading = useCallback(() => api.trading(),        []);
+  const fetchPerf    = useCallback(() => api.tradingPerf(),    []);
+  const fetchCosts   = useCallback(() => api.costs(),          []);
+  const fetchContent = useCallback(() => api.content(),        []);
+  const fetchHistory = useCallback(() => api.tradingHistory(), []);
+  const fetchTrades  = useCallback(() => api.tradingTrades(),  []);
 
-  if (loading) return <LoadingState text="Loading system status..." />;
-  if (error)   return <ErrorState message={error} onRetry={refresh} />;
+  const { data: health,  loading: lH, lastUpdated } = useApiData(fetchHealth,   30000);
+  const { data: live,    loading: lT }              = useApiData(fetchTrading,  30000);
+  const { data: perf,                }              = useApiData(fetchPerf,     60000);
+  const { data: costs,               }              = useApiData(fetchCosts,    60000);
+  const { data: content,             }              = useApiData(fetchContent,  60000);
+  const { data: history,             }              = useApiData(fetchHistory, 120000);
+  const { data: tradeData,           }              = useApiData(fetchTrades,   60000);
 
-  const { health, trading, costs, content } = data;
+  if (lH && lT && !health && !live) return <LoadingState text="Chargement..." />;
 
-  // Trading metrics
-  const ks         = trading?.kill_switch ?? {};
-  const positions  = trading?.positions ?? [];
-  const perf       = trading?.performance?.global ?? {};
-  const daily      = trading?.daily_pnl ?? {};
-  const dailyChart = trading?.daily_pnl_history ?? [];
+  const g          = perf?.global ?? {};
+  const agents     = live?.agents ?? {};
+  const agentList  = Object.entries(agents).map(([name, v]) => ({ name, ...v }));
+  const ksArmed    = live?.kill_switch_armed ?? false;
+  const positions  = live?.positions ?? [];
+  const pnlHistory = history?.history ?? [];
+  const recentTrades = [...(tradeData?.trades ?? [])].reverse().slice(0, 5);
 
-  // Costs metrics
-  const totalMonthCost = costs?.summary?.month_total_usd ?? null;
-  const todayCost      = costs?.summary?.today_total_usd ?? null;
-
-  // Content metrics
-  const draftsTotal  = content?.drafts?.total ?? null;
-  const postsToday   = content?.published?.today ?? null;
-
-  // Health
-  const uptime    = health?.uptime_pct ?? null;
-  const agentsUp  = health?.agents_active ?? null;
-  const agentsAll = health?.agents_total ?? null;
-
-  const alerts = [
-    ...(ks.tripped ? [{ type: 'error', msg: 'KILL SWITCH TRIPPED — trading halted' }] : []),
-    ...(health?.alerts ?? []),
-  ];
+  const winRate      = g.win_rate ?? null;         // already percentage (0–100)
+  const profitFactor = g.profit_factor ?? null;
+  const totalPnl     = g.pnl_usd ?? null;
+  const maxDrawdown  = g.max_drawdown_pct ?? null;
+  const openSlots    = 3 - (live?.open_positions ?? 0);
+  const projectedMonth = costs?.today != null ? (costs.today * 30).toFixed(4) : null;
 
   return (
     <div>
-      {/* Kill switch banner */}
-      <KillSwitchBanner state={ks} />
+      {/* Kill Switch Banner */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px',
+        borderRadius: 'var(--radius)', border: '1px solid', marginBottom: 16,
+        background: ksArmed ? 'var(--red-glow)' : 'var(--green-glow)',
+        borderColor: ksArmed ? 'var(--red)' : 'var(--green)',
+      }}>
+        <span style={{
+          width: 6, height: 6, borderRadius: '50%', display: 'inline-block', flexShrink: 0,
+          background: ksArmed ? 'var(--red)' : 'var(--green)',
+          boxShadow: ksArmed ? '0 0 6px var(--red)' : '0 0 6px var(--green)',
+        }} />
+        <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 11, letterSpacing: '.08em', textTransform: 'uppercase', color: ksArmed ? 'var(--red)' : 'var(--green)' }}>
+          KILL SWITCH: {ksArmed ? 'TRIPPED — TRADING HALTÉ' : 'ACTIF — TRADING ACTIVÉ'}
+        </span>
+        <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-secondary)' }}>
+          Régime: <span style={{ color: 'var(--amber)' }}>{live?.regime ?? '—'}</span>
+          {' · '}PnL jour:{' '}
+          <span style={{ color: (live?.pnl_today ?? 0) >= 0 ? 'var(--green)' : 'var(--red)' }}>
+            {fmtUSD(live?.pnl_today ?? 0)}
+          </span>
+        </span>
+      </div>
 
-      {/* Alerts */}
-      {alerts.length > 0 && (
-        <div className="mb-16">
-          {alerts.map((a, i) => (
-            <div key={i} className={`alert ${a.type}`}>{a.msg}</div>
-          ))}
-        </div>
-      )}
-
-      {/* KPI row */}
-      <SectionTitle>System Overview</SectionTitle>
-      <div className="grid-4 mb-24">
+      {/* Rangée 1 — 4 métriques */}
+      <SectionTitle>Vue Globale</SectionTitle>
+      <div className="g4 mb12">
         <MetricCard
-          label="Daily PnL"
-          value={daily?.pnl_usd != null ? fmtUSD(daily.pnl_usd) : '—'}
-          color={daily?.pnl_usd >= 0 ? 'green' : 'red'}
-          sub={`${fmtPct(daily?.pnl_pct)} today`}
-        />
-        <MetricCard
-          label="Open Positions"
-          value={positions.length}
-          color="amber"
-          sub={`Max 3 — ${3 - positions.length} slot${3 - positions.length !== 1 ? 's' : ''} free`}
-        />
-        <MetricCard
-          label="LLM Cost Today"
-          value={todayCost != null ? fmtUSD(todayCost) : '—'}
+          label="Coût LLM Aujourd'hui"
+          value={costs?.today != null ? `$${costs.today.toFixed(4)}` : '—'}
           color="blue"
-          sub={totalMonthCost != null ? `~${fmtUSD(totalMonthCost)} this month` : ''}
+          sub={projectedMonth ? `~$${projectedMonth} projeté ce mois` : 'calcul en cours…'}
+          tooltip="Coût total en tokens consommés par tous les agents LLM aujourd'hui. La projection mensuelle est calculée sur la moyenne des 7 derniers jours."
+        />
+        <MetricCard
+          label="Positions Ouvertes"
+          value={live?.open_positions ?? '—'}
+          color="amber"
+          sub={`${openSlots >= 0 ? openSlots : 0} slot${openSlots !== 1 ? 's' : ''} libre${openSlots !== 1 ? 's' : ''} (max 3)`}
         />
         <MetricCard
           label="Total Trades"
-          value={perf?.total_trades ?? '—'}
-          sub={`Win rate: ${perf?.win_rate != null ? (perf.win_rate * 100).toFixed(1) + '%' : '—'}`}
+          value={g.trades_count ?? '—'}
+          color={(winRate ?? 0) >= 55 ? 'green' : 'amber'}
+          sub={winRate != null ? `Win rate : ${winRate.toFixed(1)}%` : 'Win rate : —'}
+          tooltip="Pourcentage de trades gagnants sur le total. À analyser avec le Profit Factor — un win rate de 40% peut être rentable si les gains sont bien supérieurs aux pertes."
+        />
+        <MetricCard
+          label="Articles Publiés"
+          value={content?.drafts?.approved ?? '—'}
+          color="green"
+          sub={`${content?.drafts?.pending ?? 0} en attente`}
+          sub2={`${content?.drafts?.rejected ?? 0} refusés`}
         />
       </div>
 
-      {/* Secondary row */}
-      <div className="grid-4 mb-24">
+      {/* Rangée 2 — 4 métriques */}
+      <div className="g4 mb24">
         <MetricCard
-          label="Agents Active"
-          value={agentsAll != null ? `${agentsUp ?? '?'}/${agentsAll}` : '—'}
-          color="green"
-          sub="Poller running"
+          label="Agents Actifs"
+          value={agentList.length || '—'}
+          sub={`${health?.open_incidents ?? 0} incident(s)`}
+          color={health?.score >= 80 ? 'green' : health?.score >= 50 ? 'amber' : 'red'}
         />
         <MetricCard
-          label="Drafts Pipeline"
-          value={draftsTotal ?? '—'}
-          sub={`${postsToday ?? 0} published today`}
+          label="Profit Factor"
+          value={profitFactor != null ? profitFactor.toFixed(2) : '—'}
+          color={profitFactor != null && profitFactor >= 1 ? 'green' : profitFactor != null ? 'red' : ''}
+          sub="gains bruts / pertes brutes"
+          tooltip="Ratio gains bruts / pertes brutes. PF > 1 = rentable. PF = 1.5 signifie que pour chaque dollar perdu, on en gagne 1.50."
         />
         <MetricCard
-          label="Global PnL"
-          value={perf?.total_pnl_usd != null ? fmtUSD(perf.total_pnl_usd) : '—'}
-          color={perf?.total_pnl_usd >= 0 ? 'green' : 'red'}
-          sub={`${perf?.total_trades ?? 0} total trades`}
+          label="PnL Global"
+          value={totalPnl != null ? fmtUSD(totalPnl) : '—'}
+          color={(totalPnl ?? 0) >= 0 ? 'green' : 'red'}
+          sub={g.capital_usd ? `Capital: $${g.capital_usd.toFixed(0)}` : 'paper trading'}
+          tooltip="Somme de tous les profits et pertes réalisés. N'inclut pas les positions encore ouvertes (PnL non réalisé)."
         />
         <MetricCard
-          label="Uptime"
-          value={uptime != null ? `${uptime.toFixed(1)}%` : '—'}
-          color="green"
-          sub="Docker container"
+          label="Max Drawdown"
+          value={maxDrawdown != null ? `${maxDrawdown.toFixed(2)}%` : '—'}
+          color={maxDrawdown != null && maxDrawdown > 2 ? 'red' : maxDrawdown != null && maxDrawdown > 1 ? 'amber' : 'green'}
+          sub="kill switch à -3% journalier"
+          tooltip="Perte maximale depuis un pic de capital. Le kill switch coupe automatiquement le trading à -3% de drawdown journalier."
         />
       </div>
 
-      {/* Charts + positions */}
-      <div className="grid-2-3 mb-24">
-        {/* Daily PnL chart */}
-        <Card title="Daily PnL — 30 days">
-          {dailyChart.length > 0 ? (
-            <div className="chart-container" style={{ height: 200 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={dailyChart} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                  <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
-                  <XAxis
-                    dataKey="date"
-                    tick={{ fontFamily: 'var(--font-mono)', fontSize: 9, fill: 'var(--text-secondary)' }}
-                    axisLine={false} tickLine={false}
-                    tickFormatter={(v) => v?.slice(5)}
-                  />
-                  <YAxis
-                    tick={{ fontFamily: 'var(--font-mono)', fontSize: 9, fill: 'var(--text-secondary)' }}
-                    axisLine={false} tickLine={false}
-                    tickFormatter={(v) => `$${v}`}
-                  />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Line
-                    type="monotone" dataKey="pnl_usd" name="PnL"
-                    stroke="var(--amber)" strokeWidth={2} dot={false}
-                    activeDot={{ r: 3, fill: 'var(--amber)' }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <div className="loading-state" style={{ height: 200 }}>
-              <span style={{ fontSize: 11 }}>No history data yet</span>
-            </div>
-          )}
+      {/* Grid 2/3 : Daily PnL chart + Positions ouvertes */}
+      <div className="g23 mb24">
+        <Card title="Daily PnL — 7 jours">
+          <div style={{ height: 200 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={pnlHistory.slice(-7)} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="date" tick={{ fontFamily: 'var(--font-mono)', fontSize: 9, fill: 'var(--text-secondary)' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontFamily: 'var(--font-mono)', fontSize: 9, fill: 'var(--text-secondary)' }} axisLine={false} tickLine={false} tickFormatter={v => `${v}`} />
+                <ReferenceLine y={0} stroke="var(--border-bright)" />
+                <Tooltip content={<TT />} />
+                <Bar dataKey="pnl" name="PnL" radius={1}>
+                  {pnlHistory.slice(-7).map((e, i) => (
+                    <Cell key={i} fill={(e.pnl ?? 0) >= 0 ? 'var(--green)' : 'var(--red)'} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </Card>
 
-        {/* Open Positions */}
-        <Card title="Open Positions">
-          {positions.length === 0 ? (
-            <div style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: 12, padding: '20px 0' }}>
-              No open positions
+        <Card title="Positions Ouvertes">
+          {!positions.length ? (
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-secondary)', padding: '16px 0', textAlign: 'center' }}>
+              Aucune position ouverte
             </div>
           ) : (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Symbol</th>
-                  <th>Side</th>
-                  <th>Entry</th>
-                  <th>Current</th>
-                  <th>PnL</th>
-                  <th>Strategy</th>
+            <table className="page-table">
+              <thead><tr>
+                {['Symbol', 'Side', 'Entry', 'Actuel', 'PnL', 'Stratégie'].map(h => <TH key={h}>{h}</TH>)}
+              </tr></thead>
+              <tbody>{positions.map((p, i) => (
+                <tr key={i}>
+                  <TD style={{ color: 'var(--amber)' }}>{p.symbol ?? p.asset}</TD>
+                  <TD><Badge color={p.side === 'BUY' ? 'green' : 'red'}>{p.side ?? '—'}</Badge></TD>
+                  <TD>${p.entry_fill?.toFixed(0) ?? p.entry_price?.toFixed(0) ?? '—'}</TD>
+                  <TD>${p.current_price?.toFixed(0) ?? '—'}</TD>
+                  <TD style={{ color: (p.unrealized_pnl ?? 0) >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>
+                    {fmtUSD(p.unrealized_pnl ?? 0)}
+                  </TD>
+                  <TD style={{ color: 'var(--text-secondary)', fontSize: 9 }}>{p.strategy ?? '—'}</TD>
                 </tr>
-              </thead>
-              <tbody>
-                {positions.map((p, i) => (
-                  <tr key={i}>
-                    <td><span className="text-amber mono">{p.symbol}</span></td>
-                    <td>
-                      <Badge color={p.side === 'BUY' ? 'green' : 'red'}>{p.side}</Badge>
-                    </td>
-                    <td className="mono">${p.entry_price?.toFixed(2) ?? '—'}</td>
-                    <td className="mono">${p.current_price?.toFixed(2) ?? '—'}</td>
-                    <td className={`mono ${p.unrealized_pnl >= 0 ? 'text-green' : 'text-red'}`}>
-                      {fmtUSD(p.unrealized_pnl)}
-                    </td>
-                    <td className="text-muted mono" style={{ fontSize: 10 }}>{p.strategy ?? '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
+              ))}</tbody>
             </table>
           )}
         </Card>
       </div>
 
-      {/* Bottom row: Agent health + recent trades */}
-      <div className="grid-2 mb-16">
+      {/* Grid 1/2 : Agent Health + Trades Récents */}
+      <div className="g2 mb16">
         <Card title="Agent Health">
-          <table className="data-table">
-            <thead>
-              <tr><th>Agent</th><th>Status</th><th>Last Run</th><th>Schedule</th></tr>
-            </thead>
-            <tbody>
-              {(health?.agents ?? []).slice(0, 8).map((a) => (
+          <table className="page-table">
+            <thead><tr>
+              {['Agent', 'Statut', 'Dernier run', 'Runs', 'Erreurs'].map(h => <TH key={h}>{h}</TH>)}
+            </tr></thead>
+            <tbody>{agentList.slice(0, 8).map(a => {
+              const lastRun = (a.last_run_ts ?? 0) * 1000;
+              const stale   = Date.now() - lastRun > 600000;
+              return (
                 <tr key={a.name}>
-                  <td className="mono" style={{ fontSize: 10 }}>{a.name}</td>
-                  <td>
-                    <Badge color={a.status === 'ok' ? 'green' : a.status === 'warn' ? 'amber' : 'red'}>
-                      {a.status}
-                    </Badge>
-                  </td>
-                  <td className="text-muted mono" style={{ fontSize: 10 }}>{timeAgo(a.last_run)}</td>
-                  <td className="text-muted mono" style={{ fontSize: 10 }}>{a.every_seconds}s</td>
+                  <TD style={{ fontSize: 10 }}>{a.name}</TD>
+                  <TD><Badge color={stale ? 'amber' : 'green'}>{stale ? 'stale' : 'ok'}</Badge></TD>
+                  <TD style={{ color: 'var(--text-secondary)', fontSize: 9 }}>{timeAgo(lastRun)}</TD>
+                  <TD>{a.runs ?? 0}</TD>
+                  <TD style={{ color: (a.errors ?? 0) > 0 ? 'var(--red)' : 'var(--text-secondary)' }}>{a.errors ?? 0}</TD>
                 </tr>
-              ))}
-            </tbody>
+              );
+            })}</tbody>
           </table>
         </Card>
 
-        <Card title="Recent Trades">
-          <table className="data-table">
-            <thead>
-              <tr><th>Symbol</th><th>Side</th><th>PnL</th><th>Strategy</th><th>Time</th></tr>
-            </thead>
-            <tbody>
-              {(trading?.recent_trades ?? []).slice(0, 8).map((t, i) => (
+        <Card title="Trades Récents">
+          {!recentTrades.length ? (
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-secondary)', padding: '16px 0', textAlign: 'center' }}>
+              Aucun trade récent
+            </div>
+          ) : (
+            <table className="page-table">
+              <thead><tr>
+                {['Symbol', 'Side', 'PnL', 'Stratégie', 'Fermé'].map(h => <TH key={h}>{h}</TH>)}
+              </tr></thead>
+              <tbody>{recentTrades.map((t, i) => (
                 <tr key={i}>
-                  <td className="mono text-amber">{t.symbol}</td>
-                  <td><Badge color={t.side === 'BUY' ? 'green' : 'red'}>{t.side}</Badge></td>
-                  <td className={`mono ${t.pnl_usd >= 0 ? 'text-green' : 'text-red'}`}>
+                  <TD style={{ color: 'var(--amber)' }}>{t.symbol}</TD>
+                  <TD><Badge color={t.side === 'BUY' ? 'green' : 'red'}>{t.side ?? '—'}</Badge></TD>
+                  <TD style={{ color: (t.pnl_usd ?? 0) >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>
                     {fmtUSD(t.pnl_usd)}
-                  </td>
-                  <td className="text-muted mono" style={{ fontSize: 10 }}>{t.strategy}</td>
-                  <td className="text-muted mono" style={{ fontSize: 10 }}>{timeAgo(t.closed_at)}</td>
+                  </TD>
+                  <TD style={{ color: 'var(--text-secondary)', fontSize: 9 }}>{t.strategy ?? '—'}</TD>
+                  <TD style={{ color: 'var(--text-secondary)', fontSize: 9 }}>{timeAgo(t.closed_at)}</TD>
                 </tr>
-              ))}
-              {!(trading?.recent_trades?.length) && (
-                <tr><td colSpan={5} style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>No trades yet</td></tr>
-              )}
-            </tbody>
-          </table>
+              ))}</tbody>
+            </table>
+          )}
         </Card>
       </div>
 

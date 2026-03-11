@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 export function LoadingState({ text = 'Loading...' }) {
   return (
@@ -26,15 +26,45 @@ export function SectionTitle({ children }) {
   return <div className="section-title">{children}</div>;
 }
 
-export function MetricCard({ label, value, sub, color = '', unit = '' }) {
+export function InfoTooltip({ text }) {
+  const [show, setShow] = useState(false);
   return (
-    <div className={`metric-card ${color}`}>
+    <div
+      style={{ position: 'absolute', top: 8, right: 8, zIndex: 10 }}
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+    >
+      <div style={{
+        width: 15, height: 15, borderRadius: '50%',
+        border: '1px solid var(--border-bright)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-muted)',
+        cursor: 'default', userSelect: 'none',
+      }}>i</div>
+      {show && (
+        <div style={{
+          position: 'absolute', top: 20, right: 0, width: 220,
+          background: 'var(--bg-elevated)', border: '1px solid var(--border-bright)',
+          borderRadius: 'var(--radius)', padding: '10px 12px',
+          fontFamily: 'var(--font-ui)', fontSize: 11, color: 'var(--text-secondary)',
+          lineHeight: 1.6, zIndex: 100, boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+        }}>{text}</div>
+      )}
+    </div>
+  );
+}
+
+export function MetricCard({ label, value, sub, sub2, color = '', unit = '', tooltip }) {
+  return (
+    <div className={`metric-card ${color}`} style={{ position: 'relative' }}>
+      {tooltip && <InfoTooltip text={tooltip} />}
       <div className="metric-label">{label}</div>
       <div className={`metric-value ${color}`}>
         {value != null ? value : '—'}
         {unit && <span style={{ fontSize: 14, marginLeft: 4, color: 'var(--text-secondary)' }}>{unit}</span>}
       </div>
-      {sub && <div className="metric-sub">{sub}</div>}
+      {sub  && <div className="metric-sub">{sub}</div>}
+      {sub2 && <div className="metric-sub">{sub2}</div>}
     </div>
   );
 }
@@ -47,9 +77,9 @@ export function PulseDot({ color = '' }) {
   return <span className={`pulse-dot ${color}`} />;
 }
 
-export function Card({ title, children, action }) {
+export function Card({ title, children, action, style }) {
   return (
-    <div className="card">
+    <div className="card" style={style}>
       {(title || action) && (
         <div className="card-header">
           {title && <div className="card-title">{title}</div>}
@@ -67,12 +97,9 @@ export function KillSwitchBanner({ state }) {
     <div className={`killswitch-bar ${tripped ? 'tripped' : 'active'}`}>
       <PulseDot color={tripped ? 'red' : 'green'} />
       <span style={{
-        fontFamily: 'var(--font-mono)',
-        fontWeight: 700,
-        fontSize: 12,
+        fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 12,
         color: tripped ? 'var(--red)' : 'var(--green)',
-        letterSpacing: '0.08em',
-        textTransform: 'uppercase'
+        letterSpacing: '0.08em', textTransform: 'uppercase',
       }}>
         KILL SWITCH: {tripped ? 'TRIPPED — TRADING HALTED' : 'ACTIVE — TRADING ENABLED'}
       </span>

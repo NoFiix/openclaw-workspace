@@ -570,10 +570,16 @@ export default function SystemMap() {
   const [openBundle, setOpenBundle] = useState(null);
 
   const fetchFn = React.useCallback(() => api.health(), []);
+  const fetchTrading = React.useCallback(() => api.trading(), []);
+  const { data: tradingData } = useApiData(fetchTrading, 30000);
   const { data, loading, lastUpdated } = useApiData(fetchFn, 30000);
 
   // Runtime status map from API
   const statusMap = {};
+  const tradingAgents = tradingData?.agents ?? {};
+  Object.entries(tradingAgents).forEach(([name, v]) => {
+    statusMap[name] = { status: Date.now() - (v.last_run_ts||0)*1000 < 600000 ? "ok" : "warn" };
+  });
   (data?.agents ?? []).forEach(a => { statusMap[a.name] = a; });
 
   // Full agent detail map from SYSTEM_DATA

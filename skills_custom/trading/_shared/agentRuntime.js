@@ -48,6 +48,7 @@ export async function runAgent({ agentId, handler, argv }) {
     state.stats.runs        = (state.stats.runs ?? 0) + 1;
     state.stats.last_run_ts = Math.floor(Date.now() / 1000);
     saveState(statePath, state);
+    process.exit(0);
   } catch (e) {
     state.stats.errors      = (state.stats.errors ?? 0) + 1;
     state.stats.last_run_ts = Math.floor(Date.now() / 1000);

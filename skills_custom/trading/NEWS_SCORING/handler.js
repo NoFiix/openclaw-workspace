@@ -236,5 +236,4 @@ export async function handler(ctx) {
   };
 
   ctx.log(`✅ ${scored} events émis | ${alerts} alertes Telegram`);
-  process.exit(0);
 }

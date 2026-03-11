@@ -577,3 +577,34 @@ html, body, #root {
 /* Row flex helpers */
 .flex-row { display: flex; align-items: center; gap: 8px; }
 .flex-between { display: flex; align-items: center; justify-content: space-between; }
+
+/* Shorthand grid aliases (v3 compat) */
+.g2  { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.g3  { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.g4  { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.g23 { display: grid; grid-template-columns: 2fr 3fr; gap: 12px; }
+.g32 { display: grid; grid-template-columns: 3fr 2fr; gap: 12px; }
+
+/* Shorthand spacing aliases */
+.mb24 { margin-bottom: 24px; }
+.mb16 { margin-bottom: 16px; }
+.mb12 { margin-bottom: 12px; }
+
+/* Shorthand color helpers */
+.tg { color: var(--green); }
+.tr { color: var(--red); }
+.ta { color: var(--amber); }
+.ts { color: var(--text-secondary); }
+
+/* Flex between */
+.fbet { display: flex; align-items: center; justify-content: space-between; }
+
+/* Metric card — allow tooltip overflow */
+.metric-card { overflow: visible; }
+
+/* Table shorthand for pages */
+.page-table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 11px; }
+.page-table th { text-align: left; padding: 5px 8px; font-size: 8px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--text-secondary); border-bottom: 1px solid var(--border); white-space: nowrap; }
+.page-table td { padding: 7px 8px; border-bottom: 1px solid rgba(255,255,255,.03); vertical-align: middle; }
+.page-table tr:last-child td { border-bottom: none; }
+.page-table tr:hover td { background: var(--bg-hover); }

@@ -1,157 +1,197 @@
-import React, { useCallback } from 'react';
+import { useCallback } from 'react';
 import { api } from '../api/client';
 import { useApiData, timeAgo } from '../hooks';
-import { LoadingState, ErrorState, SectionTitle, Card, MetricCard, Badge, LastUpdated } from '../components/UI';
+import { LoadingState, ErrorState, SectionTitle, MetricCard, Card, Badge, LastUpdated } from '../components/UI';
 
-const fetchFn = () => api.content();
+const CONTENT_AGENTS = [
+  { name: 'hourly_scraper', type: 'SCRIPT', llm: 'Haiku',  schedule: '1h (7h–23h)',   every_seconds: 3600 },
+  { name: 'scraper',        type: 'SCRIPT', llm: 'Haiku',  schedule: 'Manuel',         every_seconds: null },
+  { name: 'drafts.js',      type: 'MODULE', llm: null,      schedule: 'Continu',        every_seconds: null },
+  { name: 'poller.js',      type: 'POLLER', llm: null,      schedule: 'Continu',        every_seconds: null },
+  { name: 'copywriter',     type: 'AGENT',  llm: 'Sonnet', schedule: 'À la demande',   every_seconds: null },
+  { name: 'twitter.js',     type: 'SCRIPT', llm: null,      schedule: 'Sur validation', every_seconds: null },
+];
+
+const TYPE_COLOR = {
+  SCRIPT: 'var(--blue)',
+  POLLER: 'var(--amber)',
+  MODULE: 'var(--purple)',
+  AGENT:  'var(--green)',
+};
+
+const TH = ({ children }) => (
+  <th style={{ textAlign: 'left', padding: '5px 8px', fontSize: 8, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
+    {children}
+  </th>
+);
+const TD = ({ children, style }) => (
+  <td style={{ padding: '7px 8px', fontFamily: 'var(--font-mono)', fontSize: 11, verticalAlign: 'middle', ...style }}>
+    {children}
+  </td>
+);
 
 export default function Content() {
-  const fetch = useCallback(fetchFn, []);
-  const { data, error, loading, refresh, lastUpdated } = useApiData(fetch, 30000);
+  const fetchFn = useCallback(() => api.content(), []);
+  const { data, loading, error, refresh, lastUpdated } = useApiData(fetchFn, 60000);
 
-  if (loading) return <LoadingState text="Loading content pipeline..." />;
-  if (error)   return <ErrorState message={error} onRetry={refresh} />;
+  if (loading && !data) return <LoadingState text="Chargement content..." />;
+  if (error   && !data) return <ErrorState message={error} onRetry={refresh} />;
 
-  const drafts    = data?.drafts ?? {};
-  const published = data?.published ?? {};
-  const scraper   = data?.scraper ?? {};
-  const articles  = data?.recent_articles ?? [];
-  const queue     = data?.draft_queue ?? [];
-  const twitter   = data?.twitter ?? {};
+  const drafts  = data?.drafts   ?? {};
+  const scrapers = data?.scrapers ?? {};
+  const agents   = data?.agents   ?? {};
+
+  const hourlyOk = scrapers.hourly_last_run && Date.now() - scrapers.hourly_last_run < 7_200_000;
+  const dailyOk  = scrapers.daily_last_run  && Date.now() - scrapers.daily_last_run  < 86_400_000;
 
   return (
     <div>
+      {/* ── MÉTRIQUES ── */}
       <SectionTitle>Content Pipeline</SectionTitle>
-      <div className="grid-4 mb-24">
-        <MetricCard label="Drafts Available" value={drafts.available ?? '—'} color="amber" sub={`${drafts.total ?? 0} total (IDs #1–#100)`} />
-        <MetricCard label="Published Today" value={published.today ?? '—'} color="green" sub={`${published.this_week ?? 0} this week`} />
-        <MetricCard label="Sources Scraped" value={scraper.sources_total ?? '—'} sub={`Last run: ${timeAgo(scraper.last_run)}`} />
-        <MetricCard label="Twitter Posts" value={twitter.today ?? '—'} color="blue" sub={`${twitter.total ?? 0} total`} />
+      <div className="g4 mb24">
+        <MetricCard
+          label="Drafts Disponibles"
+          value={drafts.pending ?? '—'}
+          color="amber"
+          sub={`${drafts.total ?? 0} total · ${drafts.approved ?? 0} approuvés`}
+        />
+        <MetricCard
+          label="Publiés Aujourd'hui"
+          value={data?.today ?? '—'}
+          color="green"
+          sub={data?.month != null ? `${data.month} ce mois` : 'données agrégées indisponibles'}
+        />
+        <MetricCard
+          label="Sources Scraper"
+          value={6}
+          sub={`Dernier horaire : ${timeAgo(scrapers.hourly_last_run)}`}
+        />
+        <MetricCard
+          label="Drafts Rejetés"
+          value={drafts.rejected ?? '—'}
+          color={drafts.rejected > 0 ? 'red' : 'green'}
+          sub="drafts non validés"
+        />
       </div>
 
-      <div className="grid-3-2 mb-24">
-        {/* Draft queue */}
-        <Card title="Draft Queue">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>#</th><th>Status</th><th>Preview</th><th>Source</th><th>Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {queue.slice(0, 15).map((d) => (
-                <tr key={d.id}>
-                  <td className="mono text-amber">{d.id}</td>
-                  <td>
-                    <Badge color={
-                      d.status === 'available' ? 'green' :
-                      d.status === 'published' ? 'blue' :
-                      d.status === 'rejected'  ? 'red' : 'grey'
-                    }>{d.status}</Badge>
-                  </td>
-                  <td style={{ maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'var(--font-ui)', fontSize: 12 }}>
-                    {d.preview ?? '—'}
-                  </td>
-                  <td className="text-muted mono" style={{ fontSize: 10 }}>{d.source ?? '—'}</td>
-                  <td className="text-muted mono" style={{ fontSize: 10 }}>{timeAgo(d.created_at)}</td>
-                </tr>
-              ))}
-              {!queue.length && (
-                <tr><td colSpan={5} style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>No drafts in queue</td></tr>
-              )}
-            </tbody>
-          </table>
-        </Card>
+      {/* ── SCRAPERS + AGENTS RUNTIME ── */}
+      <div className="g2 mb24">
+        <Card title="État des Scrapers">
+          {[
+            ['Scraper Horaire', scrapers.hourly_last_run, hourlyOk],
+            ['Scraper Daily',   scrapers.daily_last_run,  dailyOk],
+          ].map(([label, ts, ok]) => (
+            <div key={label} className="fbet" style={{ padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-primary)' }}>{label}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-secondary)' }}>
+                  {ts ? timeAgo(ts) : '—'}
+                </span>
+                <Badge color={ok ? 'green' : 'amber'}>{ok ? 'ok' : 'stale'}</Badge>
+              </div>
+            </div>
+          ))}
 
-        {/* Scraper + pipeline status */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <Card title="Scraper Status">
-            <table className="data-table">
-              <thead>
-                <tr><th>Source</th><th>Articles</th><th>Last</th><th>Status</th></tr>
-              </thead>
-              <tbody>
-                {(scraper.sources ?? []).map((s) => (
-                  <tr key={s.name}>
-                    <td className="mono" style={{ fontSize: 11 }}>{s.name}</td>
-                    <td className="mono">{s.articles_24h ?? '—'}</td>
-                    <td className="text-muted mono" style={{ fontSize: 10 }}>{timeAgo(s.last_fetch)}</td>
-                    <td>
-                      <Badge color={s.status === 'ok' ? 'green' : 'red'}>{s.status ?? 'unknown'}</Badge>
-                    </td>
-                  </tr>
-                ))}
-                {!(scraper.sources?.length) && (
-                  <tr><td colSpan={4} style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>No scraper data</td></tr>
-                )}
-              </tbody>
-            </table>
-          </Card>
-
-          <Card title="Pipeline Components">
+          <div style={{ marginTop: 16 }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 8, fontWeight: 600, letterSpacing: '.15em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 10 }}>
+              Drafts — Répartition
+            </div>
             {[
-              { name: 'scraper.js',         label: 'RSS Scraper',         status: scraper.status },
-              { name: 'hourly_scraper.js',  label: 'Hourly Scraper',      status: scraper.hourly_status },
-              { name: 'poller.js',          label: 'Content Poller',      status: data?.poller_status },
-              { name: 'drafts.js',          label: 'Draft Module',        status: 'ok' },
-            ].map((comp) => (
-              <div key={comp.name} className="flex-between" style={{ padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
-                <div>
-                  <div className="mono" style={{ fontSize: 11 }}>{comp.label}</div>
-                  <div className="text-muted mono" style={{ fontSize: 9 }}>{comp.name}</div>
+              ['En attente', drafts.pending  ?? 0, 'amber'],
+              ['Approuvés',  drafts.approved ?? 0, 'green'],
+              ['Rejetés',    drafts.rejected ?? 0, 'red'],
+            ].map(([label, val, color]) => (
+              <div key={label} style={{ marginBottom: 8 }}>
+                <div className="fbet" style={{ marginBottom: 4 }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-secondary)' }}>{label}</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 600, color: `var(--${color})` }}>{val}</span>
                 </div>
-                <Badge color={comp.status === 'ok' ? 'green' : comp.status === 'warn' ? 'amber' : comp.status ? 'red' : 'grey'}>
-                  {comp.status ?? 'unknown'}
-                </Badge>
+                <div style={{ height: 3, background: 'var(--bg-elevated)', borderRadius: 2, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', borderRadius: 2, width: `${drafts.total ? (val / drafts.total) * 100 : 0}%`, background: `var(--${color})`, transition: 'width .3s ease' }} />
+                </div>
               </div>
             ))}
-          </Card>
-        </div>
+          </div>
+        </Card>
+
+        <Card title="Agents Content — État Runtime">
+          {Object.keys(agents).length === 0 ? (
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-secondary)', padding: '12px 0' }}>
+              Aucun agent actif (états non chargés)
+            </div>
+          ) : (
+            <table className="page-table">
+              <thead><tr>
+                <TH>Agent</TH><TH>Dernier run</TH><TH>Runs</TH><TH>Statut</TH>
+              </tr></thead>
+              <tbody>
+                {Object.entries(agents).map(([name, v]) => {
+                  const lastRun = v.last_run_ts ?? null;
+                  const stale   = !lastRun || Date.now() - lastRun > 3_600_000;
+                  return (
+                    <tr key={name}>
+                      <TD style={{ fontSize: 10 }}>{name}</TD>
+                      <TD style={{ color: 'var(--text-secondary)', fontSize: 9 }}>{lastRun ? timeAgo(lastRun) : '—'}</TD>
+                      <TD>{v.runs ?? 0}</TD>
+                      <TD><Badge color={stale ? 'grey' : 'green'}>{stale ? 'inactif' : 'actif'}</Badge></TD>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </Card>
       </div>
 
-      {/* Recent articles */}
-      <SectionTitle>Recent Articles (Scraped)</SectionTitle>
+      {/* ── AGENTS & SCRIPTS ── */}
+      <SectionTitle>Agents & Scripts Content</SectionTitle>
       <Card>
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Title</th><th>Source</th><th>Score</th><th>Status</th><th>Scraped</th>
-            </tr>
-          </thead>
+        <table className="page-table">
+          <thead><tr>
+            <TH>Agent / Script</TH><TH>Type</TH><TH>Statut</TH><TH>Dernier run</TH><TH>Schedule</TH><TH>LLM</TH>
+          </tr></thead>
           <tbody>
-            {articles.slice(0, 20).map((a, i) => (
-              <tr key={i}>
-                <td style={{ maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
-                  {a.url ? (
-                    <a href={a.url} target="_blank" rel="noreferrer" style={{ color: 'var(--text-primary)', textDecoration: 'none' }}>
-                      {a.title ?? '—'}
-                    </a>
-                  ) : (a.title ?? '—')}
-                </td>
-                <td className="text-muted mono" style={{ fontSize: 10 }}>{a.source}</td>
-                <td>
-                  {a.score != null ? (
-                    <span className={`mono ${a.score >= 7 ? 'text-amber' : a.score >= 5 ? 'text-primary' : 'text-muted'}`} style={{ fontSize: 11 }}>
-                      {a.score.toFixed(1)}
-                    </span>
-                  ) : '—'}
-                </td>
-                <td>
-                  <Badge color={a.used ? 'blue' : a.discarded ? 'grey' : 'green'}>
-                    {a.used ? 'used' : a.discarded ? 'skip' : 'pending'}
-                  </Badge>
-                </td>
-                <td className="text-muted mono" style={{ fontSize: 10 }}>{timeAgo(a.scraped_at)}</td>
-              </tr>
-            ))}
-            {!articles.length && (
-              <tr><td colSpan={5} style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>No articles scraped yet</td></tr>
-            )}
+            {CONTENT_AGENTS.map(agent => {
+              const runtime    = agents[agent.name] ?? null;
+              const lastRunTs  = runtime?.last_run_ts ?? null;
+              const staleness  = lastRunTs && agent.every_seconds ? (Date.now() - lastRunTs) / 1000 : null;
+              const agStatus   = !staleness
+                ? 'unknown'
+                : staleness < agent.every_seconds * 2 ? 'ok'
+                : staleness < agent.every_seconds * 5 ? 'warn'
+                : 'error';
+
+              return (
+                <tr key={agent.name}>
+                  <TD style={{ fontSize: 10 }}>{agent.name}</TD>
+                  <TD>
+                    <span style={{
+                      fontFamily: 'var(--font-mono)', fontSize: 8, fontWeight: 600,
+                      padding: '1px 5px', borderRadius: 2,
+                      background: `${TYPE_COLOR[agent.type]}18`,
+                      color: TYPE_COLOR[agent.type],
+                    }}>{agent.type}</span>
+                  </TD>
+                  <TD>
+                    <Badge color={agStatus === 'ok' ? 'green' : agStatus === 'warn' ? 'amber' : agStatus === 'error' ? 'red' : 'grey'}>
+                      {agStatus === 'unknown' ? '?' : agStatus}
+                    </Badge>
+                  </TD>
+                  <TD style={{ color: 'var(--text-secondary)', fontSize: 9 }}>
+                    {lastRunTs ? timeAgo(lastRunTs) : '—'}
+                  </TD>
+                  <TD style={{ color: 'var(--text-secondary)', fontSize: 9 }}>{agent.schedule}</TD>
+                  <TD style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: agent.llm ? 'var(--amber)' : 'var(--text-muted)' }}>
+                    {agent.llm ?? '—'}
+                  </TD>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </Card>
 
-      <div className="mt-12" style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
         <LastUpdated ts={lastUpdated} />
       </div>
     </div>
