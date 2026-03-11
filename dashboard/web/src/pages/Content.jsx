@@ -57,9 +57,11 @@ export default function Content() {
         />
         <MetricCard
           label="Publiés Aujourd'hui"
-          value={data?.today ?? '—'}
+          value={data?.published?.today ?? '—'}
           color="green"
-          sub={data?.month != null ? `${data.month} ce mois` : 'données agrégées indisponibles'}
+          sub={data?.published?.today_cancelled != null
+            ? `${data.published.today_cancelled} annulé(s) aujourd'hui`
+            : '—'}
         />
         <MetricCard
           label="Sources Scraper"
