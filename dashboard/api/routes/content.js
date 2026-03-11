@@ -74,16 +74,33 @@ router.get("/summary", (req, res) => {
         agentStates[id] = { status: meta.active ? "unknown" : "inactive", last_run_ts: null };
         continue;
       }
-      const lastMtime = Math.max(...files.map(f => {
-        try { return Math.floor(statSync(join(memDir, f)).mtimeMs / 1000); } catch { return 0; }
+      const lastMtimeMs = Math.max(...files.map(f => {
+        try { return statSync(join(memDir, f)).mtimeMs; } catch { return 0; }
       }));
       agentStates[id] = {
-        status:      !meta.active ? "inactive" : lastMtime && (Date.now() / 1000 - lastMtime) < 7 * 86400 ? "ok" : "warn",
-        last_run_ts: lastMtime || null,
+        status:      !meta.active ? "inactive" : lastMtimeMs && (Date.now() - lastMtimeMs) < 7 * 86400 * 1000 ? "ok" : "warn",
+        last_run_ts: lastMtimeMs || null,  // ms — cohérent avec timeAgo() du frontend
       };
     } catch {
       agentStates[id] = { status: "unknown", last_run_ts: null };
     }
+  }
+
+  // Historique publications — content_publish_history.json (écrit par poller.js)
+  const histPath = `${WORKSPACE}/state/content_publish_history.json`;
+  const hist = readJSON(histPath) ?? { entries: [] };
+  const todayStart = new Date(new Date().toISOString().slice(0, 10)).getTime();
+  const published_today  = hist.entries.filter(e => e.ts >= todayStart && e.action === "published").length;
+  const cancelled_today  = hist.entries.filter(e => e.ts >= todayStart && e.action === "cancelled").length;
+  const recent_posts     = hist.entries.filter(e => e.action === "published").slice(0, 10);
+
+  // Fallback : compter via content_poller.log si historique vide
+  let published_today_fallback = null;
+  if (!existsSync(histPath)) {
+    try {
+      const log = readFileSync(`${WORKSPACE}/state/content_poller.log`, "utf8");
+      published_today_fallback = (log.match(/\[canal\] ✅ Publié/g) ?? []).length;
+    } catch {}
   }
 
   summaryCache = {
@@ -94,6 +111,12 @@ router.get("/summary", (req, res) => {
     },
     drafts,
     agents: agentStates,
+    published: {
+      today:             published_today,
+      today_cancelled:   cancelled_today,
+      recent:            recent_posts,
+      log_count_fallback: published_today_fallback,  // non-null seulement si pas d'historique
+    },
     today:  agg?.today  ?? null,
     month:  agg?.month  ?? null,
   };
@@ -114,9 +137,19 @@ router.get("/history", (req, res) => {
     return res.json(historyCache);
   }
 
-  // Fallback — lire les logs publisher
-  const pubLog = readJSON(`${WORKSPACE}/agents/publisher/memory/state.json`);
-  const history = pubLog?.daily_stats ?? [];
+  // Fallback — lire content_publish_history.json
+  const ph = readJSON(`${WORKSPACE}/state/content_publish_history.json`);
+  const published = (ph?.entries ?? []).filter(e => e.action === "published");
+  // Agréger par jour
+  const byDay = {};
+  for (const e of published) {
+    const d = new Date(e.ts).toISOString().slice(0, 10);
+    byDay[d] = (byDay[d] ?? 0) + 1;
+  }
+  const history = Object.entries(byDay)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-30)
+    .map(([date, count]) => ({ date, published: count }));
 
   historyCache = { ts: now, history };
   historyCacheTs = now;

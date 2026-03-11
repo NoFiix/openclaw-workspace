@@ -22,6 +22,39 @@ const CHANNEL_ID    = process.env.CRYPTORIZON_CHANNEL_ID;
 // waitingModification = null | "#3"
 let waitingModification = null;
 
+// ── HISTORIQUE PUBLICATIONS (dashboard) ──────────────────────────────────────
+
+const HISTORY_FILE = path.join(STATE_DIR, "content_publish_history.json");
+
+const SOURCE_MAP = {
+  "cointelegraph.com": "CoinTelegraph",
+  "coindesk.com":      "CoinDesk",
+  "decrypt.co":        "Decrypt",
+  "theblock.co":       "The Block",
+  "blockworks.co":     "Blockworks",
+  "cryptoslate.com":   "CryptoSlate",
+  "journalducoin.com": "JournalDuCoin",
+};
+
+function extractSource(url) {
+  if (!url) return null;
+  try {
+    const domain = new URL(url).hostname.replace(/^www\./, "");
+    return SOURCE_MAP[domain] || domain;
+  } catch { return null; }
+}
+
+function appendHistory(entry) {
+  let data;
+  try { data = JSON.parse(fs.readFileSync(HISTORY_FILE, "utf8")); }
+  catch { data = { entries: [] }; }
+  data.entries.unshift(entry);
+  const cutoff = Date.now() - 30 * 24 * 3600 * 1000;
+  data.entries = data.entries.filter(e => e.ts > cutoff).slice(0, 200);
+  data.last_updated = Date.now();
+  try { fs.writeFileSync(HISTORY_FILE, JSON.stringify(data)); } catch {}
+}
+
 // ============================================================
 // TELEGRAM
 // ============================================================
@@ -208,6 +241,15 @@ async function handlePublish(id) {
   if (result.success) {
     await publishToChannel(draft);
     deleteDraft(id);
+    appendHistory({
+      ts:        Date.now(),
+      draft_id:  id,
+      action:    "published",
+      preview:   draft.content.slice(0, 100),
+      source:    extractSource(draft.articleUrl),
+      tweet_url: result.url || null,
+      type:      draft.type || "hourly",
+    });
     await sendMessage(`✅ ${id} publié !\n🔗 ${result.url}`);
   } else {
     await sendMessage(`❌ ${id} — Échec.\n${JSON.stringify(result.error)}`);
@@ -295,6 +337,15 @@ async function handleModifyImage(id) {
 async function handleCancel(id) {
   const existed = deleteDraft(id);
   if (waitingModification === id) waitingModification = null;
+  if (existed) appendHistory({
+    ts:        Date.now(),
+    draft_id:  id,
+    action:    "cancelled",
+    preview:   existed.content?.slice(0, 100),
+    source:    extractSource(existed.articleUrl),
+    tweet_url: null,
+    type:      existed.type || "hourly",
+  });
   await sendMessage(existed ? `${id} | ❌ Draft annulé.` : `❌ Draft ${id} introuvable ou déjà supprimé.`);
 }
 
