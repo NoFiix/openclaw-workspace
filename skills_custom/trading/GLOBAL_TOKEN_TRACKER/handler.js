@@ -29,8 +29,8 @@ function fmtCost(n) { return `$${n.toFixed(4)}`; }
 function fmtNum(n)  { return n.toLocaleString("fr-FR"); }
 
 export async function handler(ctx) {
-  const token  = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
+  const token  = process.env.TRADER_TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TRADER_TELEGRAM_CHAT_ID;
 
   const learnDir  = path.join(ctx.stateDir, "learning");
   const costsFile = path.join(learnDir, "token_costs.jsonl");
@@ -159,6 +159,7 @@ ${systemLines}
 
 📈 Projection mois : *${fmtCost(monthlyProj)}*`;
 
+    ctx.log(`[TOKEN_TRACKER] Envoi Telegram chat_id=${chatId} : daily_token_report ${today}`);
     await sendTelegram(token, chatId, msg);
     sent[telegramKey] = Date.now();
     writeJSON(path.join(learnDir, "token_tracker_sent.json"), sent);

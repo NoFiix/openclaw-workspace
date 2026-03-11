@@ -351,7 +351,7 @@ export async function handler(ctx) {
   const execDir  = path.join(ctx.stateDir, "exec");
   const sentFile = path.join(execDir, "publisher_sent.json");
   const pnlFile  = path.join(execDir, "daily_pnl.json");
-  const posFile  = path.join(execDir, "positions.json");
+  const posFile  = path.join(execDir, "positions_testnet.json");
 
   let sent      = readJSON(sentFile, {});
   const positions = readJSON(posFile, []);
@@ -370,6 +370,7 @@ export async function handler(ctx) {
     if (apiKey) setup = await generateSetup(apiKey, "open", pos, ctx.stateDir);
 
     const msg = tplPositionOpen(pos, tradeNum, setup);
+    console.log(`[TRADING_PUBLISHER] Envoi Telegram chat_id=${chatId} : position_open ${pos.symbol} ${pos.side} #${tradeNum}`);
     await sendTelegram(token, chatId, msg);
     sent[key] = Date.now();
     published++;
@@ -396,6 +397,7 @@ export async function handler(ctx) {
       ? tplPositionCloseWin(pos, tradeNum, setup)
       : tplPositionCloseLoss(pos, tradeNum, setup);
 
+    console.log(`[TRADING_PUBLISHER] Envoi Telegram chat_id=${chatId} : position_close ${isWin ? "win" : "loss"} ${pos.symbol ?? "?"} pnl=${pos.pnl_usd}`);
     await sendTelegram(token, chatId, msg);
     sent[key] = Date.now();
     published++;
@@ -410,6 +412,7 @@ export async function handler(ctx) {
     const ks = readJSON(ksFile, {});
     if (ks.state === "TRIPPED" && !sent[`ks_${ks.tripped_at}`]) {
       const msg = `🚨 *KILL SWITCH DÉCLENCHÉ*\n\nRaison: _${ks.reason}_\nTous les trades sont bloqués.\nAction requise: reset manuel.`;
+      console.log(`[TRADING_PUBLISHER] Envoi Telegram chat_id=${chatId} : kill_switch_tripped`);
       await sendTelegram(token, chatId, msg);
       sent[`ks_${ks.tripped_at}`] = Date.now();
       published++;
@@ -434,6 +437,7 @@ export async function handler(ctx) {
       metrics.daily_pnl = dailyPnl[today] ?? metrics.daily_pnl;
       const stratSummary = loadStrategyPerfSummary(ctx.stateDir);
       const msg = tplDailyRecap(metrics, stratSummary);
+      console.log(`[TRADING_PUBLISHER] Envoi Telegram chat_id=${chatId} : daily_recap ${today} (${metrics.total_trades} trades)`);
       await sendTelegram(token, chatId, msg);
       sent[recapKey] = Date.now();
       published++;

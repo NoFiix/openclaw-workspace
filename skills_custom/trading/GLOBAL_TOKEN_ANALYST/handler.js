@@ -30,8 +30,8 @@ async function sendTelegram(token, chatId, text) {
 
 export async function handler(ctx) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  const token  = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
+  const token  = process.env.TRADER_TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TRADER_TELEGRAM_CHAT_ID;
 
   if (!apiKey) { ctx.log("❌ ANTHROPIC_API_KEY manquant"); return; }
 
