@@ -1,5 +1,6 @@
 import { Router } from "express";
-import { readFileSync } from "fs";
+import { readFileSync, existsSync, readdirSync } from "fs";
+import { join } from "path";
 
 const router = Router();
 const STATE_DIR = process.env.STATE_DIR; // e.g. /…/state/trading
@@ -63,26 +64,47 @@ router.get("/live", (req, res) => {
   const now = Date.now();
   if (liveCache && now - liveCacheTs < LIVE_TTL) return res.json(liveCache);
 
-  // Agents trading
-  const agentIds = [
-    "KILL_SWITCH_GUARDIAN", "POLICY_ENGINE", "TRADE_GENERATOR",
-    "RISK_MANAGER", "TRADING_ORCHESTRATOR", "TESTNET_EXECUTOR",
-    "REGIME_DETECTOR", "PREDICTOR", "PERFORMANCE_ANALYST",
-    "STRATEGY_GATEKEEPER",
-  ];
+  // Agents trading — scan dynamique de memory/*.state.json
   const agentStates = {};
-  for (const id of agentIds) {
-    const s = readJSON(`${STATE_DIR}/memory/${id}.state.json`);
-    if (s) agentStates[id] = {
-      last_run_ts: s.stats?.last_run_ts ?? null,
-      runs:        s.stats?.runs        ?? 0,
-      errors:      s.stats?.errors      ?? 0,
-    };
+  const memoryDir    = join(STATE_DIR, "memory");
+  const schedulesDir = join(STATE_DIR, "schedules");
+
+  // Charger schedules pour every_seconds
+  const scheduleMap = {};
+  if (existsSync(schedulesDir)) {
+    try {
+      readdirSync(schedulesDir)
+        .filter(f => f.endsWith(".schedule.json"))
+        .forEach(f => {
+          const s = readJSON(join(schedulesDir, f));
+          if (s?.agent_id) scheduleMap[s.agent_id] = s.every_seconds ?? null;
+        });
+    } catch {}
   }
 
-  // Kill switch
-  const ks = readJSON(`${STATE_DIR}/memory/KILL_SWITCH_GUARDIAN.state.json`);
-  const killSwitchArmed = ks?.kill_switch_armed ?? false;
+  if (existsSync(memoryDir)) {
+    try {
+      readdirSync(memoryDir)
+        .filter(f => f.endsWith(".state.json"))
+        .forEach(f => {
+          const id  = f.replace(".state.json", "");
+          const s   = readJSON(join(memoryDir, f));
+          if (!s) return;
+          const lastRun = s.stats?.last_run_ts ?? null;
+          const interval = scheduleMap[id] ?? null;
+          agentStates[id] = {
+            last_run_ts:   lastRun,
+            runs:          s.stats?.runs   ?? 0,
+            errors:        s.stats?.errors ?? 0,
+            every_seconds: interval,
+          };
+        });
+    } catch {}
+  }
+
+  // Kill switch — lire exec/killswitch.json
+  const ksData          = readJSON(`${STATE_DIR}/exec/killswitch.json`) ?? {};
+  const killSwitchArmed = ksData.state === "TRIPPED" || (ksData.state !== "ARMED" && !ksData.state);
 
   // Positions ouvertes testnet
   const positionsTestnet = readJSON(`${STATE_DIR}/exec/positions_testnet.json`) ?? [];
@@ -101,15 +123,24 @@ router.get("/live", (req, res) => {
   const pnlToday = todayTrades.reduce((s, t) => s + (t.pnl_usd ?? 0), 0);
   const lastTrade = trades.length ? trades[trades.length - 1] : null;
 
+  // Historique PnL 7 jours depuis daily_pnl_testnet.json
+  const dailyPnlRaw = readJSON(`${STATE_DIR}/exec/daily_pnl_testnet.json`) ?? {};
+  const daily_pnl_history = Object.entries(dailyPnlRaw)
+    .map(([date, pnl]) => ({ date: date.slice(5), pnl_usd: pnl }))  // "2026-03-08" → "03-08"
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(-7);
+
   liveCache = {
     ts: now,
     kill_switch_armed: killSwitchArmed,
+    kill_switch: { state: ksData.state ?? "ARMED", reason: ksData.reason ?? null, trip_count: ksData.trip_count ?? 0 },
     regime: regime?.last_regime ?? null,
     open_positions: positionsTestnet.length,
     positions: positionsTestnet.slice(0, 10),
     last_trade: lastTrade,
     pnl_today: parseFloat(pnlToday.toFixed(4)),
     trades_today: todayTrades.length,
+    daily_pnl_history,
     agents: agentStates,
   };
   liveCacheTs = now;

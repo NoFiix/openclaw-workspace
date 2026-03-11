@@ -53,15 +53,37 @@ router.get("/summary", (req, res) => {
   // Drafts en attente
   const drafts = countDrafts(`${WORKSPACE}/state/drafts.json`);
 
-  // Agents content factory
-  const agents = ["copywriter", "publisher", "builder", "performance_analyst", "news_scoring"];
+  // Agents content factory — CF V2 n'a pas de state.json, utiliser mtime des fichiers memory/
+  const CF_AGENTS = {
+    performance_analyst: { active: true  },
+    news_scoring:        { active: true  },
+    copywriter:          { active: false }, // CF V2 dev, non en prod
+    publisher:           { active: false },
+    builder:             { active: false },
+  };
   const agentStates = {};
-  for (const id of agents) {
-    const s = readJSON(`${WORKSPACE}/agents/${id}/memory/state.json`);
-    if (s) agentStates[id] = {
-      last_run_ts: s.last_run_ts ?? null,
-      runs:        s.runs        ?? 0,
-    };
+  for (const [id, meta] of Object.entries(CF_AGENTS)) {
+    const memDir = `${WORKSPACE}/agents/${id}/memory`;
+    if (!existsSync(memDir)) {
+      agentStates[id] = { status: meta.active ? "unknown" : "inactive", last_run_ts: null };
+      continue;
+    }
+    try {
+      const files = readdirSync(memDir).filter(f => !f.startsWith("."));
+      if (!files.length) {
+        agentStates[id] = { status: meta.active ? "unknown" : "inactive", last_run_ts: null };
+        continue;
+      }
+      const lastMtime = Math.max(...files.map(f => {
+        try { return Math.floor(statSync(join(memDir, f)).mtimeMs / 1000); } catch { return 0; }
+      }));
+      agentStates[id] = {
+        status:      !meta.active ? "inactive" : lastMtime && (Date.now() / 1000 - lastMtime) < 7 * 86400 ? "ok" : "warn",
+        last_run_ts: lastMtime || null,
+      };
+    } catch {
+      agentStates[id] = { status: "unknown", last_run_ts: null };
+    }
   }
 
   summaryCache = {
