@@ -1,10 +1,11 @@
 /**
- * SYSTEM_WATCHDOG v4 - Handler
+ * SYSTEM_WATCHDOG v5 - Handler
  *
- * Couvre 3 systemes :
- * 1. Trading agents    (22) - state/trading/memory/*.state.json + schedules
- * 2. Content scripts   (3)  - hourly_scraper, scraper, cleanup -> via timestamps logs
- * 3. Content Factory   (5)  - agents/AGENT/memory/state.json -> activite < 24h
+ * Couvre 4 systemes (33 nœuds) :
+ * 1. Trading agents    (21) - state/trading/memory/*.state.json + schedules
+ * 2. Agents globaux    (2)  - GLOBAL_TOKEN_TRACKER, GLOBAL_TOKEN_ANALYST
+ * 3. Content scripts   (4)  - hourly_scraper, daily_scraper, bus_rotation, poller process
+ * 4. Content Factory   (5)  - agents/AGENT/memory/* -> mtime < 7j
  *
  * - Lit la config depuis config.json (pas de magic numbers)
  * - Lit les intervals depuis *.schedule.json existants
@@ -49,12 +50,13 @@ const AGENT_INFO = {
   STRATEGY_GATEKEEPER:   { desc: "Valide ou invalide les strategies selon leurs performances reelles", to: "TRADE_GENERATOR" },
   STRATEGY_RESEARCHER:   { desc: "Recherche et propose de nouvelles strategies de trading (1×/jour)", to: "STRATEGY_GATEKEEPER" },
   TRADE_STRATEGY_TUNER:  { desc: "Optimise les parametres des strategies existantes (1×/semaine)", to: "TRADE_GENERATOR" },
-  GLOBAL_TOKEN_ANALYST:  { desc: "Analyse fondamentale des tokens (skip actuel - agent_id mismatch)", to: "TRADE_GENERATOR" },
-  GLOBAL_TOKEN_TRACKER:  { desc: "Suit les metriques on-chain des tokens (skip actuel - agent_id mismatch)", to: "TRADE_GENERATOR" },
+  GLOBAL_TOKEN_ANALYST:  { desc: "Analyse les coûts tokens LLM (bi-hebdo lun/jeu 8h UTC)", to: "TRADE_GENERATOR" },
+  GLOBAL_TOKEN_TRACKER:  { desc: "Agrège et trace les coûts tokens LLM (toutes les heures)", to: "TRADE_GENERATOR" },
 
   // ── Content scripts ─────────────────────────────────────────────────────────
   hourly_scraper:        { desc: "Scrape 6 flux RSS crypto, traduit en français et cree des drafts Telegram", to: "Publisher bot (Telegram @CryptoRizonBuilder)", schedule: "toutes les heures de 7h a 23h" },
   daily_scraper:         { desc: "Scrape quotidien approfondi pour le briefing du soir", to: "Publisher bot", schedule: "1×/jour a 19h15" },
+  bus_rotation:          { desc: "Rotation/archivage des bus JSONL trading (raw 7j, intel 30j)", to: "bus trading", schedule: "1×/jour a 3h UTC" },
 
   // ── Content Factory agents ───────────────────────────────────────────────────
   copywriter:            { desc: "Redige les posts Twitter/Telegram dans le style Ogilvy/Halbert/Stan Leloup", to: "publisher" },
@@ -281,6 +283,12 @@ export async function handler(ctx) {
       maxAgeH:   26,    // alerte si pas tourne depuis 26h
       onlyHours: null,
     },
+    {
+      key:       "bus_rotation",
+      logPath:   path.join(STATE_DIR, "audit", "rotation.log"),
+      maxAgeH:   26,    // cron 3h UTC quotidien, alerte si pas tourne depuis 26h
+      onlyHours: null,
+    },
   ];
 
   const currentHourUTC = new Date().getUTCHours();
@@ -302,21 +310,30 @@ export async function handler(ctx) {
     }
   }
 
-  // ── 4. Content Factory agents (activite < 24h) ────────────────────────────
-  const contentFactoryAgents = ["performance_analyst", "news_scoring", "copywriter", "publisher", "builder"];
-  for (const agentId of contentFactoryAgents) {
-    const sf         = path.join(AGENTS_DIR, agentId, "memory", "state.json");
-    const agentState = readJSON(sf, null);
-    if (!agentState) continue; // pas de state = pas encore utilise, skip silencieux
-    const lastRun = agentState?.last_run_ts ?? agentState?.updated_at ?? 0;
-    if (lastRun === 0) continue;
-    const elapsedH = (now - lastRun) / 3600;
-    if (elapsedH > 48) {
+  // ── 4. Content Factory agents (activite < 7j via mtime fichiers memoire) ───
+  // Pas de state.json — on utilise le mtime du fichier le plus recent dans memory/
+  // CF V2 actifs (surveilles) : on-demand mais usage attendu
+  const contentFactoryAgents        = ["performance_analyst", "news_scoring", "copywriter", "publisher", "builder"];
+  const contentFactoryActiveAgents   = ["performance_analyst", "news_scoring"]; // surveilles
+  const contentFactoryInactiveAgents = ["copywriter", "publisher", "builder"];  // CF V2 dev — pas en prod, alertes supprimees
+  for (const agentId of contentFactoryActiveAgents) {
+    const memDir = path.join(AGENTS_DIR, agentId, "memory");
+    if (!fs.existsSync(memDir)) continue; // pas encore utilise, skip silencieux
+    let lastMtime = 0;
+    try {
+      const files = fs.readdirSync(memDir).filter(f => !f.startsWith("."));
+      if (files.length === 0) continue;
+      lastMtime = Math.max(...files.map(f => getFileMtimeSec(path.join(memDir, f))));
+    } catch { continue; }
+    if (lastMtime === 0) continue;
+    const elapsedH = (now - lastMtime) / 3600;
+    if (elapsedH > 168) { // 7 jours (agents on-demand)
       addIssue(`cf_agent_stale_${agentId}`, "WARN",
-        `Content Factory - ${agentId} inactif depuis ${formatDuration(now - lastRun)}`,
+        `Content Factory - ${agentId} inactif depuis ${formatDuration(now - lastMtime)}`,
         agentDetail(agentId));
     }
   }
+  // contentFactoryInactiveAgents : pas de surveillance — CF V2 en developpement, non en production
 
   // ── 5. Taille fichiers ────────────────────────────────────────────────────
   const pollerLogPath  = path.join(STATE_DIR, "poller.log");
@@ -421,7 +438,12 @@ export async function handler(ctx) {
     const statusIcon = critCount > 0 ? "🔴" : warnCount > 0 ? "🟡" : "🟢";
     const statusText = critCount > 0 ? "DÉGRADÉ" : warnCount > 0 ? "AVERTISSEMENTS" : "NOMINAL";
 
-    const tradingLines = Object.entries(agentSchedules).map(([id, interval]) => {
+    // Séparer agents trading core vs agents globaux pour le rapport
+    const GLOBAL_AGENTS = new Set(["GLOBAL_TOKEN_TRACKER", "GLOBAL_TOKEN_ANALYST"]);
+    const tradingEntries = Object.entries(agentSchedules).filter(([id]) => !GLOBAL_AGENTS.has(id));
+    const globalEntries  = Object.entries(agentSchedules).filter(([id]) =>  GLOBAL_AGENTS.has(id));
+
+    function agentReportLine(id, interval) {
       const sf      = path.join(STATE_DIR, "memory", `${id}.state.json`);
       const as      = readJSON(sf, null);
       const lastRun = as?.stats?.last_run_ts ?? 0;
@@ -429,7 +451,45 @@ export async function handler(ctx) {
       const elapsed = now - lastRun;
       const ok      = elapsed < interval * T.agent_stale_factor_warn;
       return `• ${id}: ${ok ? "✅" : "⚠️"} (il y a ${formatDuration(elapsed)})`;
-    }).join("\n");
+    }
+
+    const tradingLines = tradingEntries.map(([id, iv]) => agentReportLine(id, iv)).join("\n");
+    const globalLines  = globalEntries.length
+      ? globalEntries.map(([id, iv]) => agentReportLine(id, iv)).join("\n")
+      : "• (aucun agent global actif)";
+
+    // Section content scripts
+    function contentLine(key, logPath, maxAgeH, onlyHours) {
+      const mtime = getFileMtimeSec(logPath);
+      if (!mtime) return `• ${key}: ❓ log introuvable`;
+      const curH = new Date().getUTCHours();
+      const inWindow = !onlyHours || (curH >= onlyHours[0] && curH <= onlyHours[1]);
+      const elapsed = now - mtime;
+      const ok = !inWindow || elapsed < maxAgeH * 3600;
+      return `• ${key}: ${ok ? "✅" : "⚠️"} (il y a ${formatDuration(elapsed)})`;
+    }
+    const contentScriptLines = [
+      contentLine("hourly_scraper", path.join(contentLogDir, "hourly_scraper.log"), 2, [7, 23]),
+      contentLine("daily_scraper",  path.join(contentLogDir, "daily_scraper.log"),  26, null),
+      contentLine("bus_rotation",   path.join(STATE_DIR, "audit", "rotation.log"),  26, null),
+      `• content_poller: ${contentOk ? "✅ (actif)" : "❌ (arrete)"}`,
+    ].join("\n");
+
+    // Section Content Factory (mtime memoire)
+    function cfAgentLine(id, active) {
+      if (!active) return `• ${id}: 🔕 (dev, non surveille)`;
+      const memDir = path.join(AGENTS_DIR, id, "memory");
+      if (!fs.existsSync(memDir)) return `• ${id}: ❓ jamais utilise`;
+      try {
+        const files = fs.readdirSync(memDir).filter(f => !f.startsWith("."));
+        if (!files.length) return `• ${id}: ❓ jamais utilise`;
+        const lastMtime = Math.max(...files.map(f => getFileMtimeSec(path.join(memDir, f))));
+        const elapsed   = now - lastMtime;
+        return `• ${id}: ${elapsed < 7 * 86400 ? "✅" : "⚠️"} (il y a ${formatDuration(elapsed)})`;
+      } catch { return `• ${id}: ❓`; }
+    }
+    const inactiveSet = new Set(contentFactoryInactiveAgents);
+    const cfLines = contentFactoryAgents.map(id => cfAgentLine(id, !inactiveSet.has(id))).join("\n");
 
     const incidentSummary = critCount > 0 || warnCount > 0
       ? `\n<b>Incidents actifs - ${critCount} CRIT, ${warnCount} WARN</b>\n` +
@@ -448,8 +508,14 @@ export async function handler(ctx) {
       `• Bus trading: ${getMB(busDirBytes)}MB\n` +
       `• State total: ${getMB(stateDirBytes)}MB\n` +
       `• Disque libre: ${diskFree}%\n\n` +
-      `<b>🤖 Agents trading (${Object.keys(agentSchedules).length})</b>\n` +
+      `<b>🤖 Agents trading (${tradingEntries.length})</b>\n` +
       tradingLines + "\n\n" +
+      `<b>⚙️ Agents globaux (${globalEntries.length})</b>\n` +
+      globalLines + "\n\n" +
+      `<b>📡 Scripts content</b>\n` +
+      contentScriptLines + "\n\n" +
+      `<b>🏭 Content Factory (${contentFactoryAgents.length})</b>\n` +
+      cfLines + "\n\n" +
       `<b>📊 Trading</b>\n` +
       `• Trades ${T.no_trade_warn_hours}h: ${tradeCount48h}${tradeCount48h === 0 ? " (normal si marche calme ou policy restrictive)" : ""}\n` +
       `• Kill switch: ${ks.state}` +
