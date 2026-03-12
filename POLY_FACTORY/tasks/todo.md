@@ -204,3 +204,19 @@
 - [x] Vérifier que les tests passent (27/27 passed)
 - [x] Vérifier que la suite complète passe (365/365 passed)
 - [x] Vérifier les critères d'acceptation
+
+---
+
+## POLY-017 — Create POLY_PAPER_EXECUTION_ENGINE
+
+**Status** : done
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation
+- [x] Créer `execution/poly_paper_execution_engine.py`
+- [x] Créer `tests/test_paper_execution.py`
+- [x] Vérifier que les tests passent (16/16 passed)
+- [x] Vérifier que la suite complète passe (381/381 passed)
+- [x] Vérifier `grep -r "py_clob_client\|py-clob-client" execution/poly_paper_execution_engine.py` → 0 résultats
+- [x] Vérifier les critères d'acceptation
