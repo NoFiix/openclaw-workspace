@@ -24,6 +24,7 @@ OVERWRITE_KEYS = {
     "feed:noaa_update": "station",
     "feed:wallet_update": "wallet",
     "signal:binance_score": "symbol",
+    "signal:market_structure": "market_id",
     "signal:wallet_convergence": "market_id",
 }
 

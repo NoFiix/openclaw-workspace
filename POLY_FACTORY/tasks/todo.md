@@ -96,3 +96,19 @@
 - [x] Vérifier que les tests passent (20/20 passed)
 - [x] Vérifier que la suite complète passe (195/195 passed)
 - [x] Vérifier les critères d'acceptation
+
+---
+
+## POLY-010 — Create POLY_MARKET_STRUCTURE_ANALYZER
+
+**Status** : done
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation
+- [x] Mettre à jour `core/poly_event_bus.py` (OVERWRITE_KEYS: signal:market_structure)
+- [x] Créer `agents/poly_market_structure_analyzer.py`
+- [x] Créer `tests/test_market_structure.py`
+- [x] Vérifier que les tests passent (18/18 passed)
+- [x] Vérifier que la suite complète passe (213/213 passed)
+- [x] Vérifier les critères d'acceptation
