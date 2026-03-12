@@ -1,0 +1,25 @@
+{
+  "price": {
+    "min_price": 0.01,
+    "max_price": 0.99,
+    "sum_min": 0.95,
+    "sum_max": 1.05,
+    "max_variation_pct": 30
+  },
+  "binance": {
+    "min_price": 0,
+    "max_variation_pct": 5
+  },
+  "noaa": {
+    "min_temp_f": -50,
+    "max_temp_f": 140,
+    "min_confidence": 0.0,
+    "max_confidence": 1.0
+  },
+  "wallet": {
+    "max_positions_per_wallet": 200,
+    "min_position_size": 0,
+    "min_avg_price": 0
+  },
+  "alert_after_consecutive_failures": 5
+}
