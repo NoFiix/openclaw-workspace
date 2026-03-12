@@ -587,6 +587,29 @@
 
 **Status** : done
 
+---
+
+## POLY-033 — Create POLY_CONVERGENCE_STRAT
+
+**Status** : done
+
+### Plan
+- `strategies/poly_convergence_strat.py` — `PolyConvergenceStrat`; wallet-convergence directional signal strategy
+- Consumes: `signal:wallet_convergence` (trigger) + `signal:resolution_parsed` (quality gate)
+- Emits: `trade:signal` (BUY_YES or BUY_NO — follows wallet consensus direction)
+- No LLM, no price feed — pure logic
+- Filters: wallet_count ≥ 3, avg_ev_score ≥ 0.55, ambiguity_score < 4
+- Confidence: `min(1.0, avg_ev_score × (wallet_count / MIN_WALLET_COUNT))`
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Rédiger le plan (plan mode)
+- [x] Créer `strategies/poly_convergence_strat.py`
+- [x] Créer `tests/test_convergence_strat.py`
+- [x] Vérifier que les tests passent (29/29 passed)
+- [x] Vérifier que la suite complète passe (959/959 passed)
+- [x] Vérifier les critères d'acceptation
+
 ### Plan
 - `strategies/poly_no_scanner.py` — `PolyNoScanner`; LLM-powered high-probability NO opportunity scanner
 - Consumes: `feed:price_update` + `signal:resolution_parsed`
