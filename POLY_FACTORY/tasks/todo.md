@@ -266,3 +266,29 @@
 - [x] Vérifier que les tests passent (26/26 passed)
 - [x] Vérifier que la suite complète passe (425/425 passed)
 - [x] Vérifier les critères d'acceptation
+
+---
+
+## POLY-020 — Create POLY_WEATHER_ARB
+
+**Status** : done
+
+### Plan
+- `strategies/poly_weather_arb.py` — `PolyWeatherArb` class; NO execution logic
+- `references/weather_market_mapping.json` — static config: station → markets → temperature buckets → market_id
+- Consumes: `feed:price_update` (price cache) + `feed:noaa_update` (triggers check)
+- Emits: `trade:signal` with `direction=BUY_YES`, `signal_type=weather_arb`
+- Core logic: `noaa_confidence - yes_ask > EDGE_THRESHOLD (0.15)` AND `confidence >= MIN_NOAA_CONFIDENCE (0.70)` AND `data_status == VALID` → signal
+- `_get_bucket(temp_f, buckets)` maps forecast temp to the matching bucket dict
+- `_check_opportunity(station, noaa_payload)` → list of signals against current price cache
+- `run_once()` processes price events first (earlier timestamp), then noaa; both are overwrite topics sorted by timestamp
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation
+- [x] Créer `references/weather_market_mapping.json`
+- [x] Créer `strategies/poly_weather_arb.py`
+- [x] Créer `tests/test_weather_arb.py`
+- [x] Vérifier que les tests passent (33/33 passed)
+- [x] Vérifier que la suite complète passe (458/458 passed)
+- [x] Vérifier les critères d'acceptation

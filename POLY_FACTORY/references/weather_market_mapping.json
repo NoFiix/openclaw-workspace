@@ -1,0 +1,107 @@
+{
+  "KLGA": {
+    "city": "New York",
+    "markets": [
+      {
+        "description": "NYC daily max temperature forecast",
+        "buckets": [
+          {"label": "< 60°F",   "min_f": null, "max_f": 60,   "market_id": "0xklga_lt60"},
+          {"label": "60-64°F",  "min_f": 60,   "max_f": 65,   "market_id": "0xklga_6064"},
+          {"label": "65-69°F",  "min_f": 65,   "max_f": 70,   "market_id": "0xklga_6569"},
+          {"label": "70-74°F",  "min_f": 70,   "max_f": 75,   "market_id": "0xklga_7074"},
+          {"label": "75-79°F",  "min_f": 75,   "max_f": 80,   "market_id": "0xklga_7579"},
+          {"label": "80-84°F",  "min_f": 80,   "max_f": 85,   "market_id": "0xklga_8084"},
+          {"label": "85-89°F",  "min_f": 85,   "max_f": 90,   "market_id": "0xklga_8589"},
+          {"label": ">= 90°F",  "min_f": 90,   "max_f": null, "market_id": "0xklga_ge90"}
+        ]
+      }
+    ]
+  },
+  "KORD": {
+    "city": "Chicago",
+    "markets": [
+      {
+        "description": "Chicago daily max temperature forecast",
+        "buckets": [
+          {"label": "< 55°F",   "min_f": null, "max_f": 55,   "market_id": "0xkord_lt55"},
+          {"label": "55-59°F",  "min_f": 55,   "max_f": 60,   "market_id": "0xkord_5559"},
+          {"label": "60-64°F",  "min_f": 60,   "max_f": 65,   "market_id": "0xkord_6064"},
+          {"label": "65-69°F",  "min_f": 65,   "max_f": 70,   "market_id": "0xkord_6569"},
+          {"label": "70-74°F",  "min_f": 70,   "max_f": 75,   "market_id": "0xkord_7074"},
+          {"label": "75-79°F",  "min_f": 75,   "max_f": 80,   "market_id": "0xkord_7579"},
+          {"label": "80-84°F",  "min_f": 80,   "max_f": 85,   "market_id": "0xkord_8084"},
+          {"label": ">= 85°F",  "min_f": 85,   "max_f": null, "market_id": "0xkord_ge85"}
+        ]
+      }
+    ]
+  },
+  "KMIA": {
+    "city": "Miami",
+    "markets": [
+      {
+        "description": "Miami daily max temperature forecast",
+        "buckets": [
+          {"label": "< 75°F",   "min_f": null, "max_f": 75,   "market_id": "0xkmia_lt75"},
+          {"label": "75-79°F",  "min_f": 75,   "max_f": 80,   "market_id": "0xkmia_7579"},
+          {"label": "80-84°F",  "min_f": 80,   "max_f": 85,   "market_id": "0xkmia_8084"},
+          {"label": "85-89°F",  "min_f": 85,   "max_f": 90,   "market_id": "0xkmia_8589"},
+          {"label": "90-94°F",  "min_f": 90,   "max_f": 95,   "market_id": "0xkmia_9094"},
+          {"label": ">= 95°F",  "min_f": 95,   "max_f": null, "market_id": "0xkmia_ge95"}
+        ]
+      }
+    ]
+  },
+  "KDAL": {
+    "city": "Dallas",
+    "markets": [
+      {
+        "description": "Dallas daily max temperature forecast",
+        "buckets": [
+          {"label": "< 65°F",   "min_f": null, "max_f": 65,   "market_id": "0xkdal_lt65"},
+          {"label": "65-69°F",  "min_f": 65,   "max_f": 70,   "market_id": "0xkdal_6569"},
+          {"label": "70-74°F",  "min_f": 70,   "max_f": 75,   "market_id": "0xkdal_7074"},
+          {"label": "75-79°F",  "min_f": 75,   "max_f": 80,   "market_id": "0xkdal_7579"},
+          {"label": "80-84°F",  "min_f": 80,   "max_f": 85,   "market_id": "0xkdal_8084"},
+          {"label": "85-89°F",  "min_f": 85,   "max_f": 90,   "market_id": "0xkdal_8589"},
+          {"label": "90-94°F",  "min_f": 90,   "max_f": 95,   "market_id": "0xkdal_9094"},
+          {"label": ">= 95°F",  "min_f": 95,   "max_f": null, "market_id": "0xkdal_ge95"}
+        ]
+      }
+    ]
+  },
+  "KSEA": {
+    "city": "Seattle",
+    "markets": [
+      {
+        "description": "Seattle daily max temperature forecast",
+        "buckets": [
+          {"label": "< 50°F",   "min_f": null, "max_f": 50,   "market_id": "0xksea_lt50"},
+          {"label": "50-54°F",  "min_f": 50,   "max_f": 55,   "market_id": "0xksea_5054"},
+          {"label": "55-59°F",  "min_f": 55,   "max_f": 60,   "market_id": "0xksea_5559"},
+          {"label": "60-64°F",  "min_f": 60,   "max_f": 65,   "market_id": "0xksea_6064"},
+          {"label": "65-69°F",  "min_f": 65,   "max_f": 70,   "market_id": "0xksea_6569"},
+          {"label": "70-74°F",  "min_f": 70,   "max_f": 75,   "market_id": "0xksea_7074"},
+          {"label": ">= 75°F",  "min_f": 75,   "max_f": null, "market_id": "0xksea_ge75"}
+        ]
+      }
+    ]
+  },
+  "KATL": {
+    "city": "Atlanta",
+    "markets": [
+      {
+        "description": "Atlanta daily max temperature forecast",
+        "buckets": [
+          {"label": "< 60°F",   "min_f": null, "max_f": 60,   "market_id": "0xkatl_lt60"},
+          {"label": "60-64°F",  "min_f": 60,   "max_f": 65,   "market_id": "0xkatl_6064"},
+          {"label": "65-69°F",  "min_f": 65,   "max_f": 70,   "market_id": "0xkatl_6569"},
+          {"label": "70-74°F",  "min_f": 70,   "max_f": 75,   "market_id": "0xkatl_7074"},
+          {"label": "75-79°F",  "min_f": 75,   "max_f": 80,   "market_id": "0xkatl_7579"},
+          {"label": "80-84°F",  "min_f": 80,   "max_f": 85,   "market_id": "0xkatl_8084"},
+          {"label": "85-89°F",  "min_f": 85,   "max_f": 90,   "market_id": "0xkatl_8589"},
+          {"label": ">= 90°F",  "min_f": 90,   "max_f": null, "market_id": "0xkatl_ge90"}
+        ]
+      }
+    ]
+  }
+}
