@@ -49,3 +49,19 @@
 - [x] Vérifier que les tests passent (12/12 passed)
 - [x] Vérifier que la suite complète passe (124/124 passed)
 - [x] Vérifier les critères d'acceptation
+
+---
+
+## POLY-007 — Create POLY_WALLET_FEED
+
+**Status** : done
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation
+- [x] Créer `references/tracked_wallets.json` (10 wallets)
+- [x] Créer `agents/poly_wallet_feed.py`
+- [x] Créer `tests/test_wallet_feed.py`
+- [x] Vérifier que les tests passent (24/24 passed)
+- [x] Vérifier que la suite complète passe (148/148 passed)
+- [x] Vérifier les critères d'acceptation

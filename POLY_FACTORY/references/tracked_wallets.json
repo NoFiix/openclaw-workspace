@@ -1,0 +1,42 @@
+{
+  "0xeAD7b0ab657e4e0e5F0b1B9e3F2b7D0f1a2b3c4d": {
+    "label": "Whale Alpha",
+    "priority": "high"
+  },
+  "0x3F8a2c91D7e6B054f8C1a9E7d3b5A0c2F4e6d8a1": {
+    "label": "Smart Money Beta",
+    "priority": "high"
+  },
+  "0xA1b2C3d4E5f6A7B8c9D0e1F2a3B4c5D6e7F8a9B0": {
+    "label": "Institutional Gamma",
+    "priority": "high"
+  },
+  "0x7C4e9D2f8A1b3E5d6F0c8A9b2D4e6F1a3C5d7E9f": {
+    "label": "Quant Delta",
+    "priority": "normal"
+  },
+  "0xB5d8E2a1F4c7D9e3A6b0C8f1E4d7A2b5C8e1F3d6": {
+    "label": "Whale Epsilon",
+    "priority": "normal"
+  },
+  "0x2E9a4C6d8F1b3A5e7D0c2F4a6B8d1E3f5A7c9D0b": {
+    "label": "Sharp Zeta",
+    "priority": "normal"
+  },
+  "0xD4f7A1c3E6b8D0e2F5a7C9d1B3e5F8a0C2d4E6f1": {
+    "label": "Tracker Eta",
+    "priority": "normal"
+  },
+  "0x6A8c0E2f4D7b9A1e3C5d7F0a2B4e6D8c1A3f5E7d": {
+    "label": "Flow Theta",
+    "priority": "normal"
+  },
+  "0xF1d3A5c7E9b0D2e4F6a8C1d3B5e7F0a2C4d6E8f1": {
+    "label": "Momentum Iota",
+    "priority": "normal"
+  },
+  "0x8B0d2E4f6A8c1D3e5F7a9C0b2D4e6F8a1C3d5E7f": {
+    "label": "Convergence Kappa",
+    "priority": "normal"
+  }
+}
