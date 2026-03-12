@@ -574,3 +574,29 @@
 - [x] Vérifier que les tests passent (34/34 passed)
 - [x] Vérifier que la suite complète passe (863/863 passed)
 - [x] Vérifier les critères d'acceptation
+
+---
+
+## POLY-031 — Create POLY_OPP_SCORER
+
+**Status** : done
+
+### Plan
+- `strategies/poly_opp_scorer.py` — `PolyOppScorer`; LLM-powered high-probability YES opportunity scorer
+- Consumes: `feed:price_update` + `signal:resolution_parsed`
+- Emits: `trade:signal` (BUY_YES only)
+- LLM: Claude Sonnet (claude-sonnet-4-6); injectable client for tests
+- Cache: LLM result per market_id with 4h TTL → `state/strategies/opp_scorer_llm_cache.json`
+- Logic: ambiguity_score < 3 AND LLM_prob ≥ 0.85 AND edge (LLM_prob - yes_ask) > 0.05 → BUY_YES
+- Constants: `EDGE_THRESHOLD=0.05`, `MIN_LLM_PROBABILITY=0.85`, `MAX_AMBIGUITY_SCORE=3`, `CACHE_TTL_SECONDS=14400`
+- `_check_opportunity(market_id, resolution_payload, price_payload)` — evaluates; calls LLM via cache
+- `run_once()` — trigger on resolution events; price events update price_cache only
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation
+- [x] Créer `strategies/poly_opp_scorer.py`
+- [x] Créer `tests/test_opp_scorer.py`
+- [x] Vérifier que les tests passent (33/33 passed)
+- [x] Vérifier que la suite complète passe (896/896 passed)
+- [x] Vérifier les critères d'acceptation
