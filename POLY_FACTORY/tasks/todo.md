@@ -159,3 +159,18 @@
 - [x] Vérifier que les tests passent (21/21 passed)
 - [x] Vérifier que la suite complète passe (269/269 passed)
 - [x] Vérifier les critères d'acceptation
+
+---
+
+## POLY-014 — Create POLY_STRATEGY_REGISTRY
+
+**Status** : done
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation
+- [x] Créer `core/poly_strategy_registry.py`
+- [x] Créer `tests/test_strategy_registry.py`
+- [x] Vérifier que les tests passent (30/30 passed)
+- [x] Vérifier que la suite complète passe (299/299 passed)
+- [x] Vérifier les critères d'acceptation
