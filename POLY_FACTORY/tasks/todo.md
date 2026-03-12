@@ -189,3 +189,18 @@
 - [x] Vérifier que les tests passent (39/39 passed)
 - [x] Vérifier que la suite complète passe (338/338 passed)
 - [x] Vérifier les critères d'acceptation
+
+---
+
+## POLY-016 — Create POLY_KELLY_SIZER
+
+**Status** : done
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation
+- [x] Créer `risk/poly_kelly_sizer.py`
+- [x] Créer `tests/test_kelly_sizer.py`
+- [x] Vérifier que les tests passent (27/27 passed)
+- [x] Vérifier que la suite complète passe (365/365 passed)
+- [x] Vérifier les critères d'acceptation
