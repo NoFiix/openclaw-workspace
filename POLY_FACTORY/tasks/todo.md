@@ -112,3 +112,19 @@
 - [x] Vérifier que les tests passent (18/18 passed)
 - [x] Vérifier que la suite complète passe (213/213 passed)
 - [x] Vérifier les critères d'acceptation
+
+---
+
+## POLY-011 — Create POLY_WALLET_TRACKER
+
+**Status** : done
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation
+- [x] Créer `references/wallet_blacklist_rules.json`
+- [x] Créer `agents/poly_wallet_tracker.py`
+- [x] Créer `tests/test_wallet_tracker.py`
+- [x] Vérifier que les tests passent (19/19 passed)
+- [x] Vérifier que la suite complète passe (232/232 passed)
+- [x] Vérifier les critères d'acceptation
