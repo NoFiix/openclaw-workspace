@@ -1,0 +1,11 @@
+{
+  "filters": [
+    {"id": 0, "name": "data_quality",    "component": "POLY_DATA_VALIDATOR"},
+    {"id": 1, "name": "microstructure",  "component": "POLY_MARKET_STRUCTURE_ANALYZER"},
+    {"id": 2, "name": "resolution",      "component": "POLY_MARKET_ANALYST"},
+    {"id": 3, "name": "sizing",          "component": "POLY_KELLY_SIZER"},
+    {"id": 4, "name": "kill_switch",     "component": "POLY_KILL_SWITCH"},
+    {"id": 5, "name": "risk_guardian",   "component": "POLY_RISK_GUARDIAN"},
+    {"id": 6, "name": "capital_manager", "component": "POLY_CAPITAL_MANAGER"}
+  ]
+}

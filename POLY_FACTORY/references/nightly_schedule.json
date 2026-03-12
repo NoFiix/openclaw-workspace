@@ -1,0 +1,10 @@
+{
+  "timezone": "UTC",
+  "steps": [
+    {"step": "reset_daily",    "utc_time": "03:00"},
+    {"step": "run_evaluator",  "utc_time": "03:15"},
+    {"step": "capital_checks", "utc_time": "03:20"},
+    {"step": "decay_detection","utc_time": "03:30"},
+    {"step": "daily_report",   "utc_time": "03:45"}
+  ]
+}

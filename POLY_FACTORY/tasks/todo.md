@@ -668,3 +668,26 @@
 - [x] Vérifier que les tests passent (33/33 passed)
 - [x] Vérifier que la suite complète passe (896/896 passed)
 - [x] Vérifier les critères d'acceptation
+
+---
+
+## POLY-035 — Create POLY_FACTORY_ORCHESTRATOR
+
+**Status** : done
+
+### Artifacts
+- `core/poly_factory_orchestrator.py` — `PolyFactoryOrchestrator`
+- `references/filter_chain_order.json` — static filter chain metadata
+- `references/nightly_schedule.json` — static nightly schedule config
+- `tests/test_orchestrator.py` — 38 tests
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation
+- [x] Créer `core/poly_factory_orchestrator.py`
+- [x] Créer `references/filter_chain_order.json`
+- [x] Créer `references/nightly_schedule.json`
+- [x] Créer `tests/test_orchestrator.py`
+- [x] Vérifier que les tests passent (38/38 passed)
+- [x] Vérifier que la suite complète passe (1026/1026 passed)
+- [x] Vérifier les critères d'acceptation
