@@ -128,3 +128,19 @@
 - [x] Vérifier que les tests passent (19/19 passed)
 - [x] Vérifier que la suite complète passe (232/232 passed)
 - [x] Vérifier les critères d'acceptation
+
+---
+
+## POLY-012 — Create POLY_MARKET_ANALYST
+
+**Status** : done
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation
+- [x] Créer `prompts/resolution_parser_prompt.txt`
+- [x] Créer `agents/poly_market_analyst.py`
+- [x] Créer `tests/test_market_analyst.py`
+- [x] Vérifier que les tests passent (16/16 passed)
+- [x] Vérifier que la suite complète passe (248/248 passed)
+- [x] Vérifier les critères d'acceptation

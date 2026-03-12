@@ -1,0 +1,17 @@
+You are a prediction market analyst. Analyze the following market and extract its resolution criteria.
+
+Market question: {question}
+Market description: {description}
+
+Return ONLY a JSON object with these exact fields:
+- "boolean_condition": a single concise English sentence describing the exact condition for YES resolution
+- "ambiguity_score": integer 0-10 (0=perfectly clear, 10=completely ambiguous)
+- "unexpected_risk_score": integer 0-10 (0=no hidden risks, 10=many unexpected edge cases)
+
+Scoring guidance:
+- ambiguity_score >= 3 means the resolution criteria are unclear or disputed
+- unexpected_risk_score >= 3 means the market has unusual edge cases or oracle risks
+
+Example: {"boolean_condition": "BTC closes above $100K on Coinbase on 2026-06-01", "ambiguity_score": 1, "unexpected_risk_score": 2}
+
+Return only the JSON object, no other text.

@@ -1,0 +1,248 @@
+"""
+POLY_MARKET_ANALYST — Resolution criteria parser for POLY_FACTORY.
+
+Calls Claude Sonnet to parse a Polymarket market's resolution criteria into:
+  - boolean_condition: concise YES-resolution sentence
+  - ambiguity_score: 0-10 (Filter 2 blocks trades if >= 3)
+  - unexpected_risk_score: 0-10
+
+Results are cached in state/research/resolutions_cache.json — 1 LLM call per market.
+Publishes signal:resolution_parsed on new analysis.
+"""
+
+import json
+import logging
+import os
+import re
+from datetime import datetime, timezone
+
+from core.poly_data_store import PolyDataStore
+from core.poly_event_bus import PolyEventBus
+
+logger = logging.getLogger("POLY_MARKET_ANALYST")
+
+CACHE_STATE_FILE = "research/resolutions_cache.json"
+PROMPT_FILE = "prompts/resolution_parser_prompt.txt"
+LLM_MODEL = "claude-sonnet-4-6"
+LLM_MAX_TOKENS = 500
+
+
+class PolyMarketAnalyst:
+    """Parses market resolution criteria via Claude Sonnet with per-market caching."""
+
+    def __init__(self, base_path="state", prompt_path=None, llm_client=None):
+        """Initialize the market analyst.
+
+        Args:
+            base_path: Base path for state files.
+            prompt_path: Path to resolution_parser_prompt.txt. Defaults to
+                prompts/resolution_parser_prompt.txt relative to project root.
+            llm_client: Anthropic client instance. If None, instantiated lazily
+                on first LLM call (avoids import errors in test environments
+                that don't have the anthropic package or API key).
+        """
+        self.store = PolyDataStore(base_path=base_path)
+        self.bus = PolyEventBus(base_path=base_path)
+
+        if prompt_path is None:
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            prompt_path = os.path.join(project_root, PROMPT_FILE)
+
+        with open(prompt_path, "r", encoding="utf-8") as f:
+            self._prompt_template = f.read()
+
+        # Injected client (used for testing); None = instantiate on first use
+        self._llm_client = llm_client
+
+        # Load existing cache from state file
+        self._cache = self._load_cache()
+
+    # ------------------------------------------------------------------
+    # Cache helpers
+    # ------------------------------------------------------------------
+
+    def _load_cache(self):
+        """Load the resolutions cache from the state file.
+
+        Returns:
+            Dict mapping market_id → cached result. Empty dict if not found.
+        """
+        data = self.store.read_json(CACHE_STATE_FILE)
+        return data if data is not None else {}
+
+    def _save_cache(self):
+        """Persist the in-memory cache to the state file."""
+        self.store.write_json(CACHE_STATE_FILE, self._cache)
+
+    # ------------------------------------------------------------------
+    # LLM helpers
+    # ------------------------------------------------------------------
+
+    def _get_llm_client(self):
+        """Return the LLM client, instantiating it lazily if needed."""
+        if self._llm_client is None:
+            import anthropic  # deferred to avoid import error when mocked
+            self._llm_client = anthropic.Anthropic()
+        return self._llm_client
+
+    def _build_prompt(self, question, description):
+        """Substitute placeholders in the prompt template.
+
+        Args:
+            question: Market question string.
+            description: Market description / resolution rules.
+
+        Returns:
+            Formatted prompt string.
+        """
+        return self._prompt_template.format(
+            question=question,
+            description=description,
+        )
+
+    def _call_llm(self, prompt):
+        """Call Claude Sonnet and return the raw text response.
+
+        Args:
+            prompt: Formatted prompt string.
+
+        Returns:
+            Raw text content from the first content block.
+        """
+        client = self._get_llm_client()
+        response = client.messages.create(
+            model=LLM_MODEL,
+            max_tokens=LLM_MAX_TOKENS,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return response.content[0].text
+
+    def _parse_response(self, raw_text):
+        """Extract the JSON payload from LLM response text.
+
+        Handles both clean JSON responses and JSON embedded in prose.
+
+        Args:
+            raw_text: Raw string from LLM.
+
+        Returns:
+            Dict with boolean_condition (str), ambiguity_score (int),
+            unexpected_risk_score (int).
+
+        Raises:
+            ValueError: If no valid JSON with required fields is found.
+        """
+        # Try direct parse first
+        try:
+            data = json.loads(raw_text.strip())
+            return self._validate_parsed(data)
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # Extract first JSON object from prose
+        match = re.search(r'\{[^{}]*\}', raw_text, re.DOTALL)
+        if match:
+            try:
+                data = json.loads(match.group())
+                return self._validate_parsed(data)
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+        raise ValueError(f"Could not extract valid JSON from LLM response: {raw_text[:200]!r}")
+
+    def _validate_parsed(self, data):
+        """Validate that parsed dict has all required fields.
+
+        Args:
+            data: Parsed dict from LLM response.
+
+        Returns:
+            Validated dict.
+
+        Raises:
+            ValueError: If required fields are missing or wrong type.
+        """
+        required = ("boolean_condition", "ambiguity_score", "unexpected_risk_score")
+        for field in required:
+            if field not in data:
+                raise ValueError(f"Missing field '{field}' in LLM response")
+
+        return {
+            "boolean_condition": str(data["boolean_condition"]),
+            "ambiguity_score": int(data["ambiguity_score"]),
+            "unexpected_risk_score": int(data["unexpected_risk_score"]),
+        }
+
+    # ------------------------------------------------------------------
+    # Public pipeline
+    # ------------------------------------------------------------------
+
+    def analyze(self, market_id, question, description, source_url=""):
+        """Parse resolution criteria for a market, using cache when available.
+
+        On cache hit: returns cached entry immediately, no LLM call.
+        On cache miss: calls LLM, parses response, caches and publishes result.
+
+        Args:
+            market_id: Unique market identifier.
+            question: Market question text.
+            description: Resolution rules / description text.
+            source_url: Optional URL for the market page.
+
+        Returns:
+            Dict with market_id, boolean_condition, ambiguity_score,
+            unexpected_risk_score, source_url, analyzed_at.
+        """
+        if market_id in self._cache:
+            logger.debug("Cache hit for market %s", market_id)
+            return self._cache[market_id]
+
+        logger.info("Analyzing market %s via LLM", market_id)
+        prompt = self._build_prompt(question, description)
+        raw_text = self._call_llm(prompt)
+        parsed = self._parse_response(raw_text)
+
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        result = {
+            "market_id": market_id,
+            "boolean_condition": parsed["boolean_condition"],
+            "ambiguity_score": parsed["ambiguity_score"],
+            "unexpected_risk_score": parsed["unexpected_risk_score"],
+            "source_url": source_url,
+            "analyzed_at": now,
+        }
+
+        self._cache[market_id] = result
+        self._save_cache()
+
+        self.bus.publish(
+            topic="signal:resolution_parsed",
+            producer="POLY_MARKET_ANALYST",
+            payload={
+                "market_id": market_id,
+                "boolean_condition": result["boolean_condition"],
+                "ambiguity_score": result["ambiguity_score"],
+                "unexpected_risk_score": result["unexpected_risk_score"],
+                "source_url": source_url,
+            },
+            priority="normal",
+        )
+
+        return result
+
+    def process_event(self, market_payload):
+        """Handle a market:new_detected bus event payload.
+
+        Args:
+            market_payload: Dict with market_id, question, description,
+                and optionally source_url.
+
+        Returns:
+            Analysis result dict.
+        """
+        return self.analyze(
+            market_id=market_payload.get("market_id", ""),
+            question=market_payload.get("question", ""),
+            description=market_payload.get("description", ""),
+            source_url=market_payload.get("source_url", ""),
+        )
