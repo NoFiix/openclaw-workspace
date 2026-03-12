@@ -581,6 +581,29 @@
 
 **Status** : done
 
+---
+
+## POLY-032 — Create POLY_NO_SCANNER
+
+**Status** : done
+
+### Plan
+- `strategies/poly_no_scanner.py` — `PolyNoScanner`; LLM-powered high-probability NO opportunity scanner
+- Consumes: `feed:price_update` + `signal:resolution_parsed`
+- Emits: `trade:signal` (BUY_NO only)
+- LLM: Claude Haiku (claude-haiku-4-5-20251001); injectable client for tests
+- Cache: permanent (no TTL) per market_id → `state/strategies/no_scanner_llm_cache.json`
+- Screen: no_ask ≥ MIN_NO_ASK (0.90) before calling LLM
+- Logic: ambiguity_score < 3 AND P(NO) ≥ 0.90 AND edge (P(NO) - no_ask) > 0.03 → BUY_NO
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Créer `strategies/poly_no_scanner.py`
+- [x] Créer `tests/test_no_scanner.py`
+- [x] Vérifier que les tests passent (34/34 passed)
+- [x] Vérifier que la suite complète passe (930/930 passed)
+- [x] Vérifier les critères d'acceptation
+
 ### Plan
 - `strategies/poly_opp_scorer.py` — `PolyOppScorer`; LLM-powered high-probability YES opportunity scorer
 - Consumes: `feed:price_update` + `signal:resolution_parsed`
