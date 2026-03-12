@@ -35,3 +35,17 @@
 - [x] Créer `tests/test_binance_feed.py`
 - [x] Vérifier que les tests passent (24/24 passed)
 - [x] Vérifier les critères d'acceptation
+
+---
+
+## POLY-006 — Create POLY_NOAA_FEED
+
+**Status** : done
+
+### Étapes
+- [x] Créer `references/station_mapping.json` (6 stations)
+- [x] Créer `agents/poly_noaa_feed.py`
+- [x] Créer `tests/test_noaa_feed.py`
+- [x] Vérifier que les tests passent (12/12 passed)
+- [x] Vérifier que la suite complète passe (124/124 passed)
+- [x] Vérifier les critères d'acceptation
