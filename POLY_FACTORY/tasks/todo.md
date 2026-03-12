@@ -593,6 +593,28 @@
 
 **Status** : done
 
+---
+
+## POLY-034 — Create POLY_NEWS_STRAT
+
+**Status** : done
+
+### Plan
+- `strategies/poly_news_strat.py` — `PolyNewsStrat`; news-impact directional signal strategy
+- Consumes: `news:high_impact` (trigger, priority mode) + `feed:price_update` (price gate)
+- Emits: `trade:signal` (BUY_YES for POSITIVE, BUY_NO for NEGATIVE)
+- No LLM — news pre-scored by OpenClaw NEWS_SCORING system
+- Filters: impact_score ≥ 0.70, sentiment != NEUTRAL, yes_ask/no_ask ≤ 0.80
+- Confidence = impact_score (clamped at 1.0)
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Créer `strategies/poly_news_strat.py`
+- [x] Créer `tests/test_news_strat.py`
+- [x] Vérifier que les tests passent (29/29 passed)
+- [x] Vérifier que la suite complète passe (988/988 passed)
+- [x] Vérifier les critères d'acceptation
+
 ### Plan
 - `strategies/poly_convergence_strat.py` — `PolyConvergenceStrat`; wallet-convergence directional signal strategy
 - Consumes: `signal:wallet_convergence` (trigger) + `signal:resolution_parsed` (quality gate)
