@@ -354,3 +354,32 @@
 - [x] Vérifier que les tests passent (31/31 passed)
 - [x] Vérifier que la suite complète passe (528/528 passed)
 - [x] Vérifier les critères d'acceptation
+
+---
+
+## POLY-023 — Create POLY_GLOBAL_RISK_GUARD
+
+**Status** : done
+
+### Plan
+- `risk/poly_global_risk_guard.py` — `PolyGlobalRiskGuard`; system-wide cumulative loss ceiling
+- State: `state/risk/global_risk_state.json` — `{status, total_loss_eur, pct_used, registered_accounts, accounts_contributing, ...}`
+- **4 status levels**:
+  - NORMAL: total loss < 2 000€ — no action
+  - ALERTE: 2 000–2 999€ — block_new_live_promotions
+  - CRITIQUE: 3 000–3 999€ — block_new_live_promotions
+  - ARRET_TOTAL: ≥ 4 000€ — halt_all_trading
+- `register(account_id)` — add account to monitoring roster
+- `evaluate() → dict` — reads all registered accounts, sums losses (only pnl.total < 0), updates status, publishes `risk:global_status` + audits **only on status change**
+- `check_pre_trade() → dict` — fast cached check; `allowed=False` only at ARRET_TOTAL
+- `get_state() → dict` — deep copy
+- `run_once() → dict` — alias for evaluate(), called every 60s
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation
+- [x] Créer `risk/poly_global_risk_guard.py`
+- [x] Créer `tests/test_global_risk_guard.py`
+- [x] Vérifier que les tests passent (38/38 passed)
+- [x] Vérifier que la suite complète passe (566/566 passed)
+- [x] Vérifier les critères d'acceptation
