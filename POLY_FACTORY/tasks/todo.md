@@ -383,3 +383,26 @@
 - [x] Vérifier que les tests passent (38/38 passed)
 - [x] Vérifier que la suite complète passe (566/566 passed)
 - [x] Vérifier les critères d'acceptation
+
+---
+
+## POLY-024 — Create POLY_CAPITAL_MANAGER
+
+**Status** : done
+
+### Plan
+- `risk/poly_capital_manager.py` — `PolyCapitalManager`; account lifecycle + capital gate
+- Gate DECIDES → Capital Manager EXECUTES (never creates live accounts without `promotion:approved`)
+- `create_live_account(payload)` — archives existing paper account if present, creates fresh account, sets status "active", publishes `account:live_created`
+- `check_capital(account_id, size_eur)` — filter 6 in 7-filter chain; `size_eur <= available` → allowed
+- `recover_capital(strategy, account_id)` — stop_strategy → archive account, publish `account:live_closed`
+- `run_once()` — polls `promotion:approved` + `risk:kill_switch`(stop_strategy); acks all
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation
+- [x] Créer `risk/poly_capital_manager.py`
+- [x] Créer `tests/test_capital_manager.py`
+- [x] Vérifier que les tests passent (33/33 passed)
+- [x] Vérifier que la suite complète passe (599/599 passed)
+- [x] Vérifier les critères d'acceptation
