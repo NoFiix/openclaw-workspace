@@ -493,3 +493,28 @@
 - [x] Vérifier que les tests passent (52/52 passed)
 - [x] Vérifier que la suite complète passe (731/731 passed)
 - [x] Vérifier les critères d'acceptation
+
+---
+
+## POLY-028 — Create POLY_LATENCY_ARB
+
+**Status** : done
+
+### Plan
+- `strategies/poly_latency_arb.py` — `PolyLatencyArb`; Binance-implied prob vs Polymarket ask latency gap
+- Consumes: `signal:binance_score` + `feed:price_update`
+- Emits: `trade:signal` (BUY_YES or BUY_NO)
+- Constants: `EDGE_THRESHOLD=0.10`, `MIN_CONFIDENCE=0.70`, `SUGGESTED_SIZE_EUR=28.0`
+- `_check_opportunity(market_id, score_payload, price_payload)` — pure signal logic
+  - BUY_YES: `implied_prob - yes_ask > EDGE_THRESHOLD` AND `confidence >= MIN_CONFIDENCE`
+  - BUY_NO: `(1 - implied_prob) - no_ask > EDGE_THRESHOLD` AND `confidence >= MIN_CONFIDENCE`
+- `run_once()` — poll bus, update caches, emit signals, ack all events
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation
+- [x] Créer `strategies/poly_latency_arb.py`
+- [x] Créer `tests/test_latency_arb.py`
+- [x] Vérifier que les tests passent (38/38 passed)
+- [x] Vérifier que la suite complète passe (769/769 passed)
+- [x] Vérifier les critères d'acceptation
