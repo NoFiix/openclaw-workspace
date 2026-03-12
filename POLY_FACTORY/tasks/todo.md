@@ -292,3 +292,37 @@
 - [x] Vérifier que les tests passent (33/33 passed)
 - [x] Vérifier que la suite complète passe (458/458 passed)
 - [x] Vérifier les critères d'acceptation
+
+---
+
+## POLY-021 — Create POLY_KILL_SWITCH
+
+**Status** : done
+
+### Plan
+- `risk/poly_kill_switch.py` — `PolyKillSwitch` class; safety-critical, no bypasses
+- State: `state/risk/kill_switch_status.json` — one entry per strategy
+- **5 response levels**: OK → WARNING → PAUSE_DAILY → PAUSE_SESSION → STOP_STRATEGY
+- `evaluate(strategy, account_id)` — checks in priority order:
+  1. `current_drawdown_pct < -30%` → STOP_STRATEGY (permanent)
+  2. `daily_pnl_pct < -5%` → PAUSE_DAILY (until midnight)
+  3. `consecutive_losses >= 3` → PAUSE_DAILY (until midnight)
+  4. `daily_pnl_pct < -4%` (80% of limit) → WARNING
+  5. All clear → OK
+  - Dedup guard: same level+reason already active → skip re-publishing bus event
+- `record_trade_result(strategy, pnl)` — loss increments counter; win resets to 0
+- `check_feed_health(strategy, account_id, feed_age_seconds)` — >300s → PAUSE_SESSION
+- `check_pre_trade(strategy)` — fast cached check; returns `{allowed, level, reason}`
+- `reset_daily(strategy)` — midnight: consecutive_losses=0, PAUSE_DAILY→OK (STOP_STRATEGY is permanent)
+- `register(strategy, account_id)` — add to evaluation roster
+- `run_once()` — tick: evaluate all registered strategies; returns list of triggered events
+- Bus event: `risk:kill_switch` priority="high", payload matches §7 schema
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation
+- [x] Créer `risk/poly_kill_switch.py`
+- [x] Créer `tests/test_kill_switch.py`
+- [x] Vérifier que les tests passent (39/39 passed)
+- [x] Vérifier que la suite complète passe (497/497 passed)
+- [x] Vérifier les critères d'acceptation
