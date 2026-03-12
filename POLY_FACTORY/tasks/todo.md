@@ -144,3 +144,18 @@
 - [x] Vérifier que les tests passent (16/16 passed)
 - [x] Vérifier que la suite complète passe (248/248 passed)
 - [x] Vérifier les critères d'acceptation
+
+---
+
+## POLY-013 — Create POLY_BACKTEST_ENGINE
+
+**Status** : done
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation
+- [x] Créer `evaluation/poly_backtest_engine.py`
+- [x] Créer `tests/test_backtest_engine.py`
+- [x] Vérifier que les tests passent (21/21 passed)
+- [x] Vérifier que la suite complète passe (269/269 passed)
+- [x] Vérifier les critères d'acceptation
