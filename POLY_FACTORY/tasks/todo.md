@@ -220,3 +220,25 @@
 - [x] Vérifier que la suite complète passe (381/381 passed)
 - [x] Vérifier `grep -r "py_clob_client\|py-clob-client" execution/poly_paper_execution_engine.py` → 0 résultats
 - [x] Vérifier les critères d'acceptation
+
+---
+
+## POLY-018 — Create POLY_ORDER_SPLITTER
+
+**Status** : done
+
+### Plan
+- `execution/poly_order_splitter.py` — pure utility class `PolyOrderSplitter`
+- `split(size_eur, price_limit, depth_usd)` — core split, no I/O
+- `split_from_market(size_eur, price_limit, market_id)` — reads depth from `state/feeds/market_structure.json` via PolyDataStore
+- Algorithm: `max_tranche = clamp(depth_usd * 0.01, 1.0, 500.0)`, `n = clamp(ceil(size_eur / max_tranche), 1, 10)`
+- No bus events, no audit — called synchronously by execution engines
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation
+- [x] Créer `execution/poly_order_splitter.py`
+- [x] Créer `tests/test_order_splitter.py`
+- [x] Vérifier que les tests passent (18/18 passed)
+- [x] Vérifier que la suite complète passe (399/399 passed)
+- [x] Vérifier les critères d'acceptation
