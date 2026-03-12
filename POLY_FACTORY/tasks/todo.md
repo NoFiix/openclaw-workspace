@@ -461,3 +461,35 @@
 - [x] Vérifier que les tests passent (46/46 passed)
 - [x] Vérifier que la suite complète passe (679/679 passed)
 - [x] Vérifier les critères d'acceptation
+
+---
+
+## POLY-027 — Create POLY_DECAY_DETECTOR
+
+**Status** : done
+
+### Plan
+- `evaluation/poly_decay_detector.py` — `PolyDecayDetector`; rolling 7-day vs 30-day decay detection
+- State: `state/evaluation/decay_alerts.json` — one entry per strategy
+- **4 monitored axes**: win_rate (threshold 0.02), sharpe_ratio (0.10), profit_factor (0.10), avg_pnl (0.0)
+- **4 severity levels**:
+  - HEALTHY: 0 axes declining and WR drop < 7pp
+  - WARNING: 1 axis declining OR win_rate drops ≥ 7pp → log only
+  - SERIOUS: 2 axes declining → account.update_status("paused")
+  - CRITICAL: 3+ axes declining → account.update_status("paused"), urgent alert
+- `compute_rolling_metrics(strategy)` → `{"short": metrics_7j, "long": metrics_30j}`
+- `_find_declining_axes(short, long)` → list of declining axis names
+- `_compute_severity(declining_axes, short, long)` → severity string
+- `detect(strategy, account_id)` → full pipeline: compute, persist, bus, audit, action
+- `run_once(strategies)` → batch detect
+- `get_alerts()` → read decay_alerts.json
+- Bus event: `eval:decay_alert`, payload: `{strategy, account_id, severity, declining_axes, action}`
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation
+- [x] Créer `evaluation/poly_decay_detector.py`
+- [x] Créer `tests/test_decay_detector.py`
+- [x] Vérifier que les tests passent (52/52 passed)
+- [x] Vérifier que la suite complète passe (731/731 passed)
+- [x] Vérifier les critères d'acceptation
