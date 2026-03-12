@@ -406,3 +406,30 @@
 - [x] Vérifier que les tests passent (33/33 passed)
 - [x] Vérifier que la suite complète passe (599/599 passed)
 - [x] Vérifier les critères d'acceptation
+
+---
+
+## POLY-025 — Create POLY_PERFORMANCE_LOGGER
+
+**Status** : done
+
+### Plan
+- `evaluation/poly_performance_logger.py` — `PolyPerformanceLogger`; per-strategy P&L aggregation and milestone detection
+- Maintains per-strategy P&L log: `state/trading/positions_by_strategy/{strategy}_pnl.jsonl`
+- Writes to `dashboard-data/aggregates/poly_paper_stats.json` and `poly_live_stats.json`
+- Milestones: [50, 100, 200, 500, 1000] trades — publishes `eval:milestone` on first crossing (dedup guard)
+- 6 metrics: total_trades, win_rate, total_pnl, profit_factor, sharpe_ratio, max_drawdown_eur
+- `log_trade(strategy, pnl, mode, trade_id, market_id)` — append resolved trade P&L
+- `compute_metrics(strategy)` — pure computation, no side effects
+- `update_stats(strategy, mode)` — compute + write + milestone check
+- `get_stats(mode)` — read current dashboard stats
+- `run_once(strategies, mode)` — batch update for all listed strategies
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation
+- [x] Créer `evaluation/poly_performance_logger.py`
+- [x] Créer `tests/test_performance_logger.py`
+- [x] Vérifier que les tests passent (34/34 passed)
+- [x] Vérifier que la suite complète passe (633/633 passed)
+- [x] Vérifier les critères d'acceptation
