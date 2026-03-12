@@ -326,3 +326,31 @@
 - [x] Vérifier que les tests passent (39/39 passed)
 - [x] Vérifier que la suite complète passe (497/497 passed)
 - [x] Vérifier les critères d'acceptation
+
+---
+
+## POLY-022 — Create POLY_RISK_GUARDIAN
+
+**Status** : done
+
+### Plan
+- `risk/poly_risk_guardian.py` — `PolyRiskGuardian`; portfolio-level pre-trade guard
+- State: `state/risk/portfolio_state.json` — `{open_positions: [...], last_updated}`
+- **3 checks** (in priority order):
+  1. `len(open_positions) < MAX_POSITIONS (5)` — position count
+  2. `(sum_exposure + proposed) / total_capital <= MAX_EXPOSURE_PCT (0.80)` — exposure
+  3. `(category_exposure + proposed) / total_capital <= MAX_CATEGORY_PCT (0.40)` — anti-correlation
+- `check(proposed_size_eur, proposed_category, total_capital_eur) -> dict` — synchronous pre-trade; publishes `risk:portfolio_check` + audits
+- `add_position(strategy, market_id, size_eur, category)` — called after execution
+- `close_position(strategy, market_id)` — called after resolution
+- `get_state() -> dict` — snapshot of current portfolio
+- `blocked_by` field reports first failing check in priority order
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation
+- [x] Créer `risk/poly_risk_guardian.py`
+- [x] Créer `tests/test_risk_guardian.py`
+- [x] Vérifier que les tests passent (31/31 passed)
+- [x] Vérifier que la suite complète passe (528/528 passed)
+- [x] Vérifier les critères d'acceptation
