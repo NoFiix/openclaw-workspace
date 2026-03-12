@@ -518,3 +518,31 @@
 - [x] Vérifier que les tests passent (38/38 passed)
 - [x] Vérifier que la suite complète passe (769/769 passed)
 - [x] Vérifier les critères d'acceptation
+
+---
+
+## POLY-029 — Create POLY_BROWNIAN_SNIPER
+
+**Status** : done
+
+### Plan
+- `strategies/poly_brownian_sniper.py` — `PolyBrownianSniper`; GBM-based binary market probability estimation
+- Consumes: `signal:binance_score` (current_price, strike_price, days_to_resolution) + `feed:price_update` (yes_ask)
+- Emits: `trade:signal` (BUY_YES only)
+- Rolling 60s history per market_id: accumulate `current_price` from each score event
+- Pure math functions (module-level):
+  - `_normal_cdf(x)` — standard normal CDF via math.erfc
+  - `_compute_volatility(prices)` — annualized σ from log returns, ANNUALIZATION_FACTOR = 252*24*60
+  - `_gbm_probability(S0, K, sigma, days)` — P(S(T) > K) = N(d2) with zero drift
+- Constants: `EDGE_THRESHOLD=0.08`, `MIN_CONFIDENCE=0.65`, `MIN_PRICE_HISTORY=5`, `SUGGESTED_SIZE_EUR=25.0`
+- `_check_opportunity(market_id, score, price, prices_60s)` — pure, computes σ then GBM prob
+- `run_once()` — poll events, update caches + history, evaluate updated markets
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation
+- [x] Créer `strategies/poly_brownian_sniper.py`
+- [x] Créer `tests/test_brownian_sniper.py`
+- [x] Vérifier que les tests passent (60/60 passed)
+- [x] Vérifier que la suite complète passe (829/829 passed)
+- [x] Vérifier les critères d'acceptation
