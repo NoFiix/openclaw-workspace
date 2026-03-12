@@ -242,3 +242,27 @@
 - [x] Vérifier que les tests passent (18/18 passed)
 - [x] Vérifier que la suite complète passe (399/399 passed)
 - [x] Vérifier les critères d'acceptation
+
+---
+
+## POLY-019 — Create POLY_ARB_SCANNER
+
+**Status** : done
+
+### Plan
+- `strategies/poly_arb_scanner.py` — `PolyArbScanner` class; NO execution logic
+- Consumes: `feed:price_update` + `signal:market_structure` (via bus poll)
+- Emits: `trade:signal` with `direction=BUY_YES_AND_NO`, `signal_type=bundle_arb`
+- Core logic: `yes_ask + no_ask < SUM_THRESHOLD (0.97)` AND `executability_score >= MIN_EXECUTABILITY (60)` → signal
+- Confidence: `min(1.0, (SUM_THRESHOLD - ask_sum) / SUM_THRESHOLD)`
+- `_market_structure` dict caches latest `signal:market_structure` payloads per market_id
+- `run_once()` polls both topics, updates cache on market_structure events, checks arb on price events, acks all
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation
+- [x] Créer `strategies/poly_arb_scanner.py`
+- [x] Créer `tests/test_arb_scanner.py`
+- [x] Vérifier que les tests passent (26/26 passed)
+- [x] Vérifier que la suite complète passe (425/425 passed)
+- [x] Vérifier les critères d'acceptation
