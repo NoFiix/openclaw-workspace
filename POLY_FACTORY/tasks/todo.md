@@ -546,3 +546,31 @@
 - [x] Vérifier que les tests passent (60/60 passed)
 - [x] Vérifier que la suite complète passe (829/829 passed)
 - [x] Vérifier les critères d'acceptation
+
+---
+
+## POLY-030 — Create POLY_PAIR_COST
+
+**Status** : done
+
+### Plan
+- `strategies/poly_pair_cost.py` — `PolyPairCost`; directional pair-cost arbitrage
+- Consumes: `feed:price_update` + `signal:market_structure`
+- Emits: `trade:signal` (BUY_YES or BUY_NO)
+- Logic: use the opposite side's bid as an implied fair-value reference
+  - `edge_yes = (1 - no_bid) - yes_ask`  → BUY_YES when > EDGE_THRESHOLD
+  - `edge_no  = (1 - yes_bid) - no_ask`  → BUY_NO when > EDGE_THRESHOLD
+  - Prefer the side with the larger edge; require executability ≥ MIN_EXECUTABILITY
+- Constants: `EDGE_THRESHOLD=0.05`, `MIN_EXECUTABILITY=60`, `SUGGESTED_SIZE_EUR=25.0`
+- Distinct from POLY_ARB_SCANNER: buys ONE side (directional); ARB_SCANNER buys both
+- `_check_opportunity(market_id, yes_ask, yes_bid, no_ask, no_bid)` — pure
+- `run_once()` — cache market_structure, trigger on price_update
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation
+- [x] Créer `strategies/poly_pair_cost.py`
+- [x] Créer `tests/test_pair_cost.py`
+- [x] Vérifier que les tests passent (34/34 passed)
+- [x] Vérifier que la suite complète passe (863/863 passed)
+- [x] Vérifier les critères d'acceptation
