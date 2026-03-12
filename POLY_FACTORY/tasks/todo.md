@@ -433,3 +433,31 @@
 - [x] Vérifier que les tests passent (34/34 passed)
 - [x] Vérifier que la suite complète passe (633/633 passed)
 - [x] Vérifier les critères d'acceptation
+
+---
+
+## POLY-026 — Create POLY_STRATEGY_EVALUATOR
+
+**Status** : done
+
+### Plan
+- `evaluation/poly_strategy_evaluator.py` — `PolyStrategyEvaluator`; 8-axis scoring, verdicts, rankings
+- `references/evaluator_weights.json` — weights and formulas for 8 axes
+- 8 axes: profitability(0.20), win_rate(0.15), sharpe(0.20), profit_factor(0.15), drawdown(0.10), tradability(0.10), stability(0.05), activity(0.05)
+- 5 verdicts: STAR(≥75), SOLID(60–74), FRAGILE(40–59), DECLINING(20–39), RETIRE(<20)
+- Backtest malus: −15 on tradability axis
+- `score_axes(metrics, initial_capital, is_backtest)` — pure scoring, no I/O
+- `evaluate(strategy, account_id, metrics, initial_capital, is_backtest)` — score + save + rankings + bus + audit
+- `update_rankings()` — rebuild strategy_rankings.json sorted by score desc
+- `run_once(strategies)` — load account + metrics, evaluate each
+- Fix: `sharpe == 100.0` test → `>= 99.0` (3.0 × 33.33 = 99.99 float)
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation
+- [x] Créer `evaluation/poly_strategy_evaluator.py`
+- [x] Créer `references/evaluator_weights.json`
+- [x] Créer `tests/test_strategy_evaluator.py`
+- [x] Vérifier que les tests passent (46/46 passed)
+- [x] Vérifier que la suite complète passe (679/679 passed)
+- [x] Vérifier les critères d'acceptation

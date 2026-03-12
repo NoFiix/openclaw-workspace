@@ -1,0 +1,55 @@
+{
+  "_comment": "Weights and scoring parameters for POLY_STRATEGY_EVALUATOR (POLY-026).",
+  "_total_weight": 1.0,
+
+  "axes": {
+    "profitability": {
+      "weight": 0.20,
+      "formula": "min(100, max(0, return_pct * 10))",
+      "description": "Total return % normalised: 0% → 0, 10% → 100"
+    },
+    "win_rate": {
+      "weight": 0.15,
+      "formula": "win_rate * 100",
+      "description": "Win rate 0.0–1.0 scaled to 0–100"
+    },
+    "sharpe": {
+      "weight": 0.20,
+      "formula": "min(100, max(0, sharpe_ratio * 33.33))",
+      "description": "Sharpe ratio normalised: 0 → 0, 3.0 → 100"
+    },
+    "profit_factor": {
+      "weight": 0.15,
+      "formula": "min(100, max(0, (profit_factor - 0.5) * 50))",
+      "description": "Profit factor normalised: PF 0.5 → 0, PF 2.5 → 100"
+    },
+    "drawdown": {
+      "weight": 0.10,
+      "formula": "max(0, 100 + max_drawdown_pct * 2)",
+      "description": "Inverted drawdown: 0% dd → 100, -50% dd → 0"
+    },
+    "tradability": {
+      "weight": 0.10,
+      "formula": "min(100, total_trades * 2) - 15 if backtest else 0",
+      "description": "Trade count normalised: 50 trades → 100; -15 malus for backtest-only results"
+    },
+    "stability": {
+      "weight": 0.05,
+      "formula": "min(100, max(0, sharpe_ratio * 16.67))",
+      "description": "Return stability (softer Sharpe curve): Sharpe 6.0 → 100"
+    },
+    "activity": {
+      "weight": 0.05,
+      "formula": "min(100, total_trades * 2)",
+      "description": "Trade frequency: 50 trades → 100"
+    }
+  },
+
+  "verdicts": {
+    "STAR":      {"min_score": 75, "description": "Top-tier strategy, ready for live"},
+    "SOLID":     {"min_score": 60, "description": "Good strategy, promotable"},
+    "FRAGILE":   {"min_score": 40, "description": "Borderline, needs more data"},
+    "DECLINING": {"min_score": 20, "description": "Performance degrading, watch closely"},
+    "RETIRE":    {"min_score":  0, "description": "Below minimum threshold, retire"}
+  }
+}
