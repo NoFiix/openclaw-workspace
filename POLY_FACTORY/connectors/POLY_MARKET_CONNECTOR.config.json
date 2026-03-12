@@ -1,0 +1,11 @@
+{
+  "active_connectors": ["polymarket"],
+  "polymarket": {
+    "gamma_api_url": "https://gamma-api.polymarket.com",
+    "clob_ws_url": "wss://ws-subscriptions-clob.polymarket.com/ws/market",
+    "ping_interval_s": 60,
+    "reconnect_max_backoff_s": 30,
+    "reconnect_initial_s": 1,
+    "connection_timeout_s": 120
+  }
+}
