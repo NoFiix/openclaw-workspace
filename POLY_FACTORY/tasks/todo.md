@@ -752,6 +752,25 @@
 
 ---
 
+## POLY-040 — Create POLY_STRATEGY_TUNER
+
+**Status** : done
+
+### Artifacts
+- `evaluation/poly_strategy_tuner.py` — `PolyStrategyTuner`
+- `tests/test_strategy_tuner.py` — 12 tests
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation (plan mode)
+- [x] Créer `evaluation/poly_strategy_tuner.py`
+- [x] Créer `tests/test_strategy_tuner.py`
+- [x] Vérifier que les tests passent (12/12 passed)
+- [x] Vérifier que la suite complète passe (1109/1109 passed)
+- [x] Vérifier les critères d'acceptation (MIN_TRADES guard, STOP→registry+account stopped, OPTIMIZABLE→no stop, bad JSON fallback, bus event published, batch run_once)
+
+---
+
 ## POLY-037 — Create POLY_EXECUTION_ROUTER
 
 **Status** : done
