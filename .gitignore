@@ -19,3 +19,14 @@ docs/TRADING_ARCHITECTURE.md
 CONTEXT_BUNDLE_CONTENT.md
 CONTEXT_BUNDLE_TRADING.md
 CONTEXT_BUNDLE_INFRA.md
+# Python
+POLY_FACTORY/.venv/
+POLY_FACTORY/__pycache__/
+POLY_FACTORY/**/__pycache__/
+POLY_FACTORY/**/*.pyc
+
+# Dist dashboard (généré au build, pas à commiter)
+dashboard/web/dist/
+
+# Audit temporaire
+audit_poly.md
