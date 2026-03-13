@@ -864,3 +864,22 @@
 - [x] Vérifier que les tests passent (12/12 passed)
 - [x] Vérifier que la suite complète passe (1158/1158 passed)
 - [x] Vérifier les critères d'acceptation (implémente PolyMarketConnector, http_client injectable, state kalshi_prices.json, feed:price_update bus event, place_order NotImplementedError)
+
+---
+
+## POLY-045 — Create connector_sportsbook
+
+**Status** : done
+
+### Artifacts
+- `connectors/connector_sportsbook.py` — `ConnectorSportsbook` + `decimal_to_implied` + `remove_vig`
+- `tests/test_connector_sportsbook.py` — 13 tests
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation (plan mode)
+- [x] Créer `connectors/connector_sportsbook.py`
+- [x] Créer `tests/test_connector_sportsbook.py`
+- [x] Vérifier que les tests passent (13/13 passed)
+- [x] Vérifier que la suite complète passe (1171/1171 passed)
+- [x] Vérifier les critères d'acceptation (odds conversion + vig removal, YES/NO mapping, http_client injectable, feed:price_update bus event, place_order NotImplementedError)
