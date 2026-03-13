@@ -39,19 +39,21 @@ function auth(req, res, next) {
 }
 
 // ── Routes ───────────────────────────────────────────────────────────────────
-import healthRouter   from "./routes/health.js";
-import costsRouter    from "./routes/costs.js";
-import tradingRouter  from "./routes/trading.js";
-import contentRouter  from "./routes/content.js";
-import storageRouter  from "./routes/storage.js";
-import docsRouter     from "./routes/docs.js";
+import healthRouter      from "./routes/health.js";
+import costsRouter       from "./routes/costs.js";
+import tradingRouter     from "./routes/trading.js";
+import contentRouter     from "./routes/content.js";
+import storageRouter     from "./routes/storage.js";
+import docsRouter        from "./routes/docs.js";
+import polymarketRouter  from "./routes/polymarket.js";
 
-app.use("/api/health",   auth, healthRouter);
-app.use("/api/costs",    auth, costsRouter);
-app.use("/api/trading",  auth, tradingRouter);
-app.use("/api/content",  auth, contentRouter);
-app.use("/api/storage",  auth, storageRouter);
-app.use("/api/docs",     auth, docsRouter);
+app.use("/api/health",      auth, healthRouter);
+app.use("/api/costs",       auth, costsRouter);
+app.use("/api/trading",     auth, tradingRouter);
+app.use("/api/content",     auth, contentRouter);
+app.use("/api/storage",     auth, storageRouter);
+app.use("/api/docs",        auth, docsRouter);
+app.use("/api/polymarket",  auth, polymarketRouter);
 
 // ── Sanity check ─────────────────────────────────────────────────────────────
 app.get("/ping", (req, res) => res.json({ ok: true, ts: Date.now() }));
