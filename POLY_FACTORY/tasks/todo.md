@@ -805,3 +805,24 @@
 - [x] Vérifier que les tests passent (12/12 passed)
 - [x] Vérifier que la suite complète passe (1070/1070 passed)
 - [x] Vérifier les critères d'acceptation (paper_testing → execute:paper, live → execute:live, unroutable statuses → None)
+
+---
+
+## POLY-042 — Create POLY_SYSTEM_MONITOR
+
+**Status** : done
+
+### Artifacts
+- `agents/poly_system_monitor.py` — `PolySystemMonitor`
+- `references/monitoring_thresholds.json` — thresholds config
+- `tests/test_system_monitor.py` — 12 tests
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation (plan mode)
+- [x] Créer `references/monitoring_thresholds.json`
+- [x] Créer `agents/poly_system_monitor.py`
+- [x] Créer `tests/test_system_monitor.py`
+- [x] Vérifier que les tests passent (12/12 passed)
+- [x] Vérifier que la suite complète passe (1134/1134 passed)
+- [x] Vérifier les critères d'acceptation (4 layers, injectable inputs, system:api_degraded HIGH priority, status=OK on healthy run)

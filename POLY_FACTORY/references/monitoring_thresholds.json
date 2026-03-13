@@ -1,0 +1,16 @@
+{
+  "agents": {
+    "max_memory_mb": 500,
+    "max_cpu_pct": 90.0,
+    "max_error_rate_per_min": 10,
+    "stale_multiplier": 2
+  },
+  "apis": {
+    "latency_degraded_multiplier": 3
+  },
+  "infra": {
+    "min_disk_free_gb": 1.0,
+    "max_ram_pct": 90.0,
+    "max_cpu_5min_pct": 85.0
+  }
+}
