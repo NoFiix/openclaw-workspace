@@ -845,3 +845,22 @@
 - [x] Vérifier que les tests passent (12/12 passed)
 - [x] Vérifier que la suite complète passe (1146/1146 passed)
 - [x] Vérifier les critères d'acceptation (ping/register, stale detection, restart_fn injectable, disable after 3 restarts, HIGH priority bus events)
+
+---
+
+## POLY-044 — Create connector_kalshi
+
+**Status** : done
+
+### Artifacts
+- `connectors/connector_kalshi.py` — `ConnectorKalshi`
+- `tests/test_connector_kalshi.py` — 12 tests
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation (plan mode)
+- [x] Créer `connectors/connector_kalshi.py`
+- [x] Créer `tests/test_connector_kalshi.py`
+- [x] Vérifier que les tests passent (12/12 passed)
+- [x] Vérifier que la suite complète passe (1158/1158 passed)
+- [x] Vérifier les critères d'acceptation (implémente PolyMarketConnector, http_client injectable, state kalshi_prices.json, feed:price_update bus event, place_order NotImplementedError)
