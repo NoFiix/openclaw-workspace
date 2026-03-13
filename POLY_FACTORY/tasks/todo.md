@@ -826,3 +826,22 @@
 - [x] Vérifier que les tests passent (12/12 passed)
 - [x] Vérifier que la suite complète passe (1134/1134 passed)
 - [x] Vérifier les critères d'acceptation (4 layers, injectable inputs, system:api_degraded HIGH priority, status=OK on healthy run)
+
+---
+
+## POLY-043 — Create POLY_HEARTBEAT
+
+**Status** : done
+
+### Artifacts
+- `agents/poly_heartbeat.py` — `PolyHeartbeat`
+- `tests/test_heartbeat.py` — 12 tests
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation (plan mode)
+- [x] Créer `agents/poly_heartbeat.py`
+- [x] Créer `tests/test_heartbeat.py`
+- [x] Vérifier que les tests passent (12/12 passed)
+- [x] Vérifier que la suite complète passe (1146/1146 passed)
+- [x] Vérifier les critères d'acceptation (ping/register, stale detection, restart_fn injectable, disable after 3 restarts, HIGH priority bus events)
