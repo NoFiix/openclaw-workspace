@@ -713,6 +713,26 @@
 
 ---
 
+## POLY-038 — Create POLY_LIVE_EXECUTION_ENGINE
+
+**Status** : done
+
+### Artifacts
+- `execution/poly_live_execution_engine.py` — `PolyLiveExecutionEngine`
+- `tests/test_live_execution.py` — 15 tests
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation (plan mode)
+- [x] Créer `execution/poly_live_execution_engine.py`
+- [x] Créer `tests/test_live_execution.py`
+- [x] Vérifier que les tests passent (15/15 passed)
+- [x] Vérifier que la suite complète passe (1085/1085 passed)
+- [x] `grep -r "py_clob_client\|py-clob-client" execution/poly_paper_execution_engine.py` → 0 résultats
+- [x] Vérifier les critères d'acceptation (mock API submit, retry→success, 3 retries→abandon, payload conforme §7)
+
+---
+
 ## POLY-037 — Create POLY_EXECUTION_ROUTER
 
 **Status** : done
