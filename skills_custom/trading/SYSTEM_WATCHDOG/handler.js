@@ -240,6 +240,13 @@ export async function handler(ctx) {
   if (!contentOk)   addIssue("content_poller_down", "CRIT", "content poller.js ne tourne PAS",       "Le pipeline de publication CryptoRizon est arrete");
   if (!containerOk) addIssue("container_down",       "CRIT", "Container openclaw-gateway semble KO", "Tous les services sont potentiellement hors ligne");
 
+  const POLY_BASE          = CONFIG.poly_factory?.state_base ?? null;
+  const polyOrchestratorOk = isProcessRunning(CONFIG.poly_factory?.process_pattern ?? "run_orchestrator.py");
+  if (!polyOrchestratorOk)
+    addIssue("poly_orchestrator_down", "CRIT",
+      "poly-orchestrator ne tourne PAS",
+      "POLY_FACTORY est a l'arret - aucun trade paper/live possible");
+
   // ── 2. Trading agents stales ──────────────────────────────────────────────
   for (const [agentId, intervalSec] of Object.entries(agentSchedules)) {
     const sf         = path.join(STATE_DIR, "memory", `${agentId}.state.json`);
@@ -379,6 +386,33 @@ export async function handler(ctx) {
     }
   }
 
+  // ── 8b. POLY_FACTORY — Kill switch global + agents désactivés ────────────
+  if (POLY_BASE) {
+    const polyPortfolio = readJSON(path.join(POLY_BASE, "risk", "portfolio_state.json"), null);
+    if (polyPortfolio) {
+      if (polyPortfolio.global_status === "ARRET_TOTAL") {
+        addIssue("poly_global_arret_total", "CRIT",
+          "POLY_FACTORY - Arret total declenche",
+          `Perte cumulee >= 4 000EUR sur toutes les strategies | statut: ${polyPortfolio.global_status}`);
+      } else if (polyPortfolio.global_status === "CRITIQUE") {
+        addIssue("poly_global_risk_critique", "WARN",
+          "POLY_FACTORY - Risque global CRITIQUE",
+          `Perte cumulee entre 3 000EUR et 4 000EUR | statut: ${polyPortfolio.global_status}`);
+      }
+    }
+
+    const polyHeartbeat = readJSON(path.join(POLY_BASE, "orchestrator", "heartbeat_state.json"), null);
+    if (polyHeartbeat?.agents) {
+      for (const [agentName, agentData] of Object.entries(polyHeartbeat.agents)) {
+        if (agentData.status === "disabled") {
+          addIssue(`poly_agent_disabled_${agentName}`, "WARN",
+            `POLY_FACTORY - ${agentName} desactive`,
+            `Trop de redemarrages (${agentData.restart_count}/3) - intervention manuelle requise`);
+        }
+      }
+    }
+  }
+
   // ── 9. Activite trades ────────────────────────────────────────────────────
   let tradeCount48h = 0;
   try {
@@ -491,6 +525,69 @@ export async function handler(ctx) {
     const inactiveSet = new Set(contentFactoryInactiveAgents);
     const cfLines = contentFactoryAgents.map(id => cfAgentLine(id, !inactiveSet.has(id))).join("\n");
 
+    // ── Section POLY_FACTORY ──────────────────────────────────────────────
+    let polySection = "";
+    if (POLY_BASE) {
+      const polyOrchestratorStatus = polyOrchestratorOk ? "✅ online" : "❌ arrete";
+
+      // Dernier cycle nightly
+      const polySysState = readJSON(path.join(POLY_BASE, "orchestrator", "system_state.json"), {});
+      let polyLastNightly = "jamais";
+      if (polySysState.last_nightly_run) {
+        const ts = Math.floor(new Date(polySysState.last_nightly_run).getTime() / 1000);
+        polyLastNightly = `il y a ${formatDuration(now - ts)}`;
+      }
+
+      // Kill switch global
+      const polyPortfolioR = readJSON(path.join(POLY_BASE, "risk", "portfolio_state.json"), {});
+      const polyGlobalStatus = polyPortfolioR.global_status ?? "NORMAL";
+      const polyKsIcon = polyGlobalStatus === "ARRET_TOTAL" ? "🔴"
+        : polyGlobalStatus === "CRITIQUE" ? "🟠"
+        : polyGlobalStatus === "ALERTE"   ? "🟡"
+        : "🟢";
+
+      // Trades paper aujourd'hui (trade_id = TRD_YYYYMMDD_XXXX)
+      const todayFmt = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      let polyTrades24h = 0;
+      try {
+        const tradesPath = path.join(POLY_BASE, "trading", "paper_trades_log.jsonl");
+        if (fs.existsSync(tradesPath)) {
+          const lines = fs.readFileSync(tradesPath, "utf-8").split("\n").filter(l => l.trim());
+          for (const line of lines) {
+            try { if (JSON.parse(line).trade_id?.startsWith(`TRD_${todayFmt}`)) polyTrades24h++; }
+            catch {}
+          }
+        }
+      } catch {}
+
+      // P&L today depuis les comptes strategies
+      let polyPnlToday = 0;
+      try {
+        const accountsDir = path.join(POLY_BASE, "accounts");
+        if (fs.existsSync(accountsDir)) {
+          for (const f of fs.readdirSync(accountsDir).filter(f => f.endsWith(".json") && f.startsWith("ACC_"))) {
+            const acc = readJSON(path.join(accountsDir, f), null);
+            if (acc) polyPnlToday += acc.daily_pnl_eur ?? 0;
+          }
+        }
+      } catch {}
+
+      // Agents desactives
+      const polyHbR = readJSON(path.join(POLY_BASE, "orchestrator", "heartbeat_state.json"), {});
+      const disabledAgents = Object.entries(polyHbR.agents ?? {})
+        .filter(([, d]) => d.status === "disabled")
+        .map(([name]) => name);
+
+      const polyMode = (process.env.POLY_MODE ?? "paper").toUpperCase();
+      const polyPnlStr = `${polyPnlToday >= 0 ? "+" : ""}${polyPnlToday.toFixed(2)}EUR`;
+      polySection =
+        `\n<b>📊 POLY_FACTORY (${polyMode})</b>\n` +
+        `• Orchestrateur: ${polyOrchestratorStatus} | dernier cycle: ${polyLastNightly}\n` +
+        `• Kill switch global: ${polyKsIcon} ${polyGlobalStatus}\n` +
+        `• Trades paper 24h: ${polyTrades24h} | P&L today: ${polyPnlStr}\n` +
+        `• Agents desactives: ${disabledAgents.length > 0 ? disabledAgents.join(", ") : "aucun"}\n`;
+    }
+
     const incidentSummary = critCount > 0 || warnCount > 0
       ? `\n<b>Incidents actifs - ${critCount} CRIT, ${warnCount} WARN</b>\n` +
         Object.values(currentIssues).map(i => `• [${i.severity}] ${escapeHtml(i.message)}`).join("\n")
@@ -519,6 +616,7 @@ export async function handler(ctx) {
       `<b>📊 Trading</b>\n` +
       `• Trades ${T.no_trade_warn_hours}h: ${tradeCount48h}${tradeCount48h === 0 ? " (normal si marche calme ou policy restrictive)" : ""}\n` +
       `• Kill switch: ${ks.state}` +
+      polySection +
       incidentSummary +
       `\n\n🕐 ${parisTime()}`;
 

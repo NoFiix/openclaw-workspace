@@ -580,6 +580,7 @@ class PolyFactoryOrchestrator:
           5. Build and log report.
           6. Update system_state.last_nightly_run.
           7. Audit nightly:cycle_completed.
+          8. Compact the event bus (remove acked events from pending_events.jsonl).
 
         Returns:
             Report dict: {date, strategies_evaluated, promotions_pending,
@@ -635,5 +636,8 @@ class PolyFactoryOrchestrator:
 
         # 8. Audit
         self.audit.log_event("nightly:cycle_completed", CONSUMER_ID, report)
+
+        # 9. Compact the event bus (remove acked events to prevent unbounded growth)
+        self.bus.compact()
 
         return report

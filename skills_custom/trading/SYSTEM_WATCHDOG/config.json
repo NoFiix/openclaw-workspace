@@ -2,6 +2,11 @@
   "schedule_minutes": 15,
   "daily_summary_hour_utc": 8,
   "skip_agents": ["PAPER_EXECUTOR"],
+  "poly_factory": {
+    "state_base": "/home/openclawadmin/openclaw/workspace/POLY_FACTORY/state",
+    "process_pattern": "run_orchestrator.py",
+    "orchestrator_stale_warn_h": 26
+  },
   "thresholds": {
     "poller_log_mb": 50,
     "bus_dir_mb": 400,
