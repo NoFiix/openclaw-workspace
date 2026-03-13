@@ -29,4 +29,9 @@ export const api = {
   content: () => apiFetch('/content/summary'),
   storage: () => apiFetch('/storage/summary'),
   docs:    () => apiFetch('/docs'),
+  // ── Polymarket (POLY_FACTORY) ─────────────────────────────────────────────
+  polyLive:       () => apiFetch('/polymarket/live'),
+  polyStrategies: () => apiFetch('/polymarket/strategies'),
+  polyTrades:     (params = '') => apiFetch(`/polymarket/trades${params}`),
+  polyHealth:     () => apiFetch('/polymarket/health'),
 };

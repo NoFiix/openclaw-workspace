@@ -9,6 +9,7 @@ import Trading       from './pages/Trading';
 import Content       from './pages/Content';
 import Infrastructure from './pages/Infrastructure';
 import Docs          from './pages/Docs';
+import Polymarket    from './pages/Polymarket';
 
 // ── Icons (inline SVG to avoid dependency) ──────────────────────────
 const Icons = {
@@ -19,19 +20,21 @@ const Icons = {
   Content:     () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="2" width="12" height="12" rx="1"/><line x1="5" y1="6" x2="11" y2="6"/><line x1="5" y1="9" x2="9" y2="9"/></svg>,
   Infra:       () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="3" width="14" height="4" rx="0.5"/><rect x="1" y="9" width="14" height="4" rx="0.5"/><circle cx="12" cy="5" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="11" r="1" fill="currentColor" stroke="none"/></svg>,
   Docs:        () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 2h8a1 1 0 011 1v10a1 1 0 01-1 1H4a1 1 0 01-1-1V3a1 1 0 011-1z"/><line x1="5.5" y1="6" x2="10.5" y2="6"/><line x1="5.5" y1="9" x2="8.5" y2="9"/></svg>,
+  Polymarket:  () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="3" width="14" height="10" rx="1"/><path d="M4 9l3-3 2 2 3-4"/><circle cx="12" cy="11" r="1" fill="currentColor" stroke="none"/></svg>,
   Settings:    () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2m0 10v2M1 8h2m10 0h2m-2.5-4.5-1.5 1.5M4 4l1.5 1.5M4 12l1.5-1.5M12 12l-1.5-1.5"/></svg>,
   Refresh:     () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M13.5 2.5A7 7 0 102 8"/><polyline points="2,4 2,8 6,8"/></svg>,
 };
 
 // ── Navigation config ────────────────────────────────────────────────
 const NAV = [
-  { id: 'overview',  label: 'Vue Globale',    Icon: Icons.Overview,  Page: Overview },
-  { id: 'map',       label: 'System Map',     Icon: Icons.Map,       Page: SystemMap },
-  { id: 'costs',     label: 'Coûts LLM',      Icon: Icons.Costs,     Page: Costs },
-  { id: 'trading',   label: 'Trading',        Icon: Icons.Trading,   Page: Trading },
-  { id: 'content',   label: 'Content',        Icon: Icons.Content,   Page: Content },
-  { id: 'infra',     label: 'Infrastructure', Icon: Icons.Infra,     Page: Infrastructure },
-  { id: 'docs',      label: 'API Docs',       Icon: Icons.Docs,      Page: Docs },
+  { id: 'overview',    label: 'Vue Globale',    Icon: Icons.Overview,   Page: Overview },
+  { id: 'map',         label: 'System Map',     Icon: Icons.Map,        Page: SystemMap },
+  { id: 'costs',       label: 'Coûts LLM',      Icon: Icons.Costs,      Page: Costs },
+  { id: 'trading',     label: 'Trading',        Icon: Icons.Trading,    Page: Trading },
+  { id: 'polymarket',  label: 'Polymarket',     Icon: Icons.Polymarket, Page: Polymarket },
+  { id: 'content',     label: 'Content',        Icon: Icons.Content,    Page: Content },
+  { id: 'infra',       label: 'Infrastructure', Icon: Icons.Infra,      Page: Infrastructure },
+  { id: 'docs',        label: 'API Docs',       Icon: Icons.Docs,       Page: Docs },
 ];
 
 // ── API Key Modal ────────────────────────────────────────────────────
@@ -87,13 +90,14 @@ function SettingsModal({ onClose }) {
 
 // ── PAGE TITLES ──────────────────────────────────────────────────────
 const PAGE_TITLES = {
-  overview: 'VUE GLOBALE',
-  map:      'SYSTEM MAP',
-  costs:    'COÛTS LLM',
-  trading:  'TRADING',
-  content:  'CONTENT PIPELINE',
-  infra:    'INFRASTRUCTURE',
-  docs:     'API DOCS',
+  overview:   'VUE GLOBALE',
+  map:        'SYSTEM MAP',
+  costs:      'COÛTS LLM',
+  trading:    'TRADING',
+  polymarket: 'POLYMARKET',
+  content:    'CONTENT PIPELINE',
+  infra:      'INFRASTRUCTURE',
+  docs:       'API DOCS',
 };
 
 // ── Main App ─────────────────────────────────────────────────────────
