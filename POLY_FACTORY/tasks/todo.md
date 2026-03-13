@@ -752,6 +752,25 @@
 
 ---
 
+## POLY-041 — Create POLY_STRATEGY_SCOUT
+
+**Status** : done
+
+### Artifacts
+- `evaluation/poly_strategy_scout.py` — `PolyStrategyScout`
+- `tests/test_strategy_scout.py` — 13 tests
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation (plan mode)
+- [x] Créer `evaluation/poly_strategy_scout.py`
+- [x] Créer `tests/test_strategy_scout.py`
+- [x] Vérifier que les tests passent (13/13 passed)
+- [x] Vérifier que la suite complète passe (1122/1122 passed)
+- [x] Vérifier les critères d'acceptation (dedup, platform filter, MAX_NEW_PER_RUN cap, score≥40→bus event, bad JSON fallback, stopped strategies→reactivation_candidates)
+
+---
+
 ## POLY-040 — Create POLY_STRATEGY_TUNER
 
 **Status** : done
