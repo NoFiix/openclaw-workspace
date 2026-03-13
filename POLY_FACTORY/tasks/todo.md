@@ -733,6 +733,25 @@
 
 ---
 
+## POLY-039 — Create POLY_COMPOUNDER
+
+**Status** : done
+
+### Artifacts
+- `evaluation/poly_compounder.py` — `PolyCompounder`
+- `tests/test_compounder.py` — 12 tests
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation (plan mode)
+- [x] Créer `evaluation/poly_compounder.py`
+- [x] Créer `tests/test_compounder.py`
+- [x] Vérifier que les tests passent (12/12 passed)
+- [x] Vérifier que la suite complète passe (1097/1097 passed)
+- [x] Vérifier les critères d'acceptation (Haiku injectable, no LLM on 0 trades, bad JSON fallback, lessons persisted)
+
+---
+
 ## POLY-037 — Create POLY_EXECUTION_ROUTER
 
 **Status** : done
