@@ -691,3 +691,22 @@
 - [x] Vérifier que les tests passent (38/38 passed)
 - [x] Vérifier que la suite complète passe (1026/1026 passed)
 - [x] Vérifier les critères d'acceptation
+
+---
+
+## POLY-036 — Create POLY_STRATEGY_PROMOTION_GATE
+
+**Status** : done
+
+### Artifacts
+- `risk/poly_strategy_promotion_gate.py` — `PolyStrategyPromotionGate`
+- `tests/test_promotion_gate.py` — 32 tests
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Écrire le plan d'implémentation
+- [x] Créer `risk/poly_strategy_promotion_gate.py`
+- [x] Créer `tests/test_promotion_gate.py`
+- [x] Vérifier que les tests passent (32/32 passed)
+- [x] Vérifier que la suite complète passe (1058/1058 passed)
+- [x] Vérifier les critères d'acceptation (10/10 → approved, check 8 fail → denied, gate creates no accounts)
