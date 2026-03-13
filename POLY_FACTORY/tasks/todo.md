@@ -710,3 +710,21 @@
 - [x] Vérifier que les tests passent (32/32 passed)
 - [x] Vérifier que la suite complète passe (1058/1058 passed)
 - [x] Vérifier les critères d'acceptation (10/10 → approved, check 8 fail → denied, gate creates no accounts)
+
+---
+
+## POLY-037 — Create POLY_EXECUTION_ROUTER
+
+**Status** : done
+
+### Artifacts
+- `execution/poly_execution_router.py` — `PolyExecutionRouter`
+- `tests/test_execution_router.py` — 12 tests
+
+### Étapes
+- [x] Lire le ticket et les documents de référence
+- [x] Créer `execution/poly_execution_router.py`
+- [x] Créer `tests/test_execution_router.py`
+- [x] Vérifier que les tests passent (12/12 passed)
+- [x] Vérifier que la suite complète passe (1070/1070 passed)
+- [x] Vérifier les critères d'acceptation (paper_testing → execute:paper, live → execute:live, unroutable statuses → None)
