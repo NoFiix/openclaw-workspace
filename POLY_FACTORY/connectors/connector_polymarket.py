@@ -233,28 +233,72 @@ class ConnectorPolymarket(PolyMarketConnector):
             "resolved_at": data.get("resolved_at", data.get("end_date_iso", "")),
         }
 
+    def _get_clob_client(self):
+        """Lazy-load py-clob-client using env credentials."""
+        from py_clob_client.client import ClobClient  # noqa: PLC0415
+        return ClobClient(
+            host="https://clob.polymarket.com",
+            key=os.environ["WALLET_PRIVATE_KEY"],
+            chain_id=137,
+            creds={
+                "apiKey":     os.environ["POLYMARKET_API_KEY"],
+                "secret":     os.environ["POLYMARKET_API_SECRET"],
+                "passphrase": "",
+            },
+        )
+
     def get_positions(self, wallet):
-        """Fetch positions for a wallet. Placeholder for future implementation.
+        """Fetch open orders (active positions) for the authenticated account.
+
+        Uses CLOB API get_trades() to retrieve recent fills as a position proxy.
+        Fully settled on-chain positions require Polygon RPC (not implemented here).
 
         Returns:
-            Empty list (Polygon RPC integration planned for future).
+            List of position dicts: {market_id, asset_id, side, size, price}.
         """
-        logger.warning("get_positions not yet implemented — requires Polygon RPC")
-        return []
+        try:
+            from py_clob_client.clob_types import TradeParams  # noqa: PLC0415
+            client = self._get_clob_client()
+            resp = client.get_trades(TradeParams(maker_address=wallet))
+            trades = resp.get("data", []) if isinstance(resp, dict) else []
+            return [
+                {
+                    "market_id": t.get("market"),
+                    "asset_id":  t.get("asset_id"),
+                    "side":      t.get("side"),
+                    "size":      float(t.get("size", 0) or 0),
+                    "price":     float(t.get("price", 0) or 0),
+                }
+                for t in trades
+            ]
+        except Exception as e:
+            logger.warning(f"get_positions failed: {e}")
+            return []
 
     def place_order(self, market_id, side, size, price):
-        """Place order — not implemented in connector.
+        """Place a limit order on the Polymarket CLOB.
 
-        Order placement is handled by POLY_LIVE_EXECUTION_ENGINE directly
-        via py-clob-client. The connector provides data only.
+        Args:
+            market_id: Token ID (asset_id) for the YES or NO side.
+            side:      "BUY" or "SELL".
+            size:      Order size in shares.
+            price:     Limit price (0.0–1.0).
+
+        Returns:
+            Order result dict from CLOB API.
 
         Raises:
-            NotImplementedError: Always.
+            Exception: On CLOB API error or missing credentials.
         """
-        raise NotImplementedError(
-            "Order placement is handled by POLY_LIVE_EXECUTION_ENGINE, "
-            "not by the connector. Use the execution engine."
+        from py_clob_client.clob_types import OrderArgs  # noqa: PLC0415
+        client = self._get_clob_client()
+        order_args = OrderArgs(
+            token_id=market_id,
+            price=price,
+            size=size,
+            side=side,
         )
+        return client.create_and_post_order(order_args)
 
     def calculate_reconnect_backoff(self):
         """Calculate and return the next reconnect delay with exponential backoff.

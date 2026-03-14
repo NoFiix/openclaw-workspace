@@ -48,6 +48,9 @@ class PolyEventBus:
         # Per-consumer idempotence sets (bounded deques)
         self._consumer_processed = {}
 
+        # Poll call counter — used to throttle auto-compaction checks
+        self._poll_count = 0
+
         # Global deque of acked event_ids, bounded to last 10 000 (spec: CLAUDE.md)
         self._acked_ids = collections.deque(maxlen=IDEMPOTENCE_SET_SIZE)
 
@@ -116,6 +119,11 @@ class PolyEventBus:
             List of envelope dicts, sorted by priority (high first) then timestamp.
         """
         all_events = self.store.read_jsonl(PENDING_FILE)
+
+        # Auto-compact: check every 100 polls, trigger if file exceeds 10 000 events
+        self._poll_count += 1
+        if self._poll_count % 100 == 0 and len(all_events) > 10_000:
+            self.compact()
 
         # Ensure consumer has an idempotence set
         if consumer_id not in self._consumer_processed:

@@ -20,6 +20,7 @@ from core.poly_strategy_account import PolyStrategyAccount
 CONSUMER_ID = "POLY_PAPER_EXECUTION_ENGINE"
 FEE_RATE = 0.002  # 0.2% of trade size
 PAPER_TRADES_LOG = "trading/paper_trades_log.jsonl"
+PNL_LOG_DIR      = "trading/positions_by_strategy"
 MARKET_STRUCTURE_FILE = "feeds/market_structure.json"
 
 
@@ -119,6 +120,18 @@ class PolyPaperExecutionEngine:
             producer=CONSUMER_ID,
             payload=result,
         )
+
+        # Decay detector feed — one JSONL record per closed paper trade
+        pnl_record = {
+            "trade_id":  trade_id,
+            "strategy":  strategy,
+            "market_id": market_id,
+            "direction": direction,
+            "size_eur":  size_eur,
+            "pnl":       -(size_eur + fees),  # capital cost at execution (paper position opened)
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+        self.store.append_jsonl(f"{PNL_LOG_DIR}/{strategy}_pnl.jsonl", pnl_record)
 
         return result
 

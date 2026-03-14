@@ -5,7 +5,7 @@ import { join } from "path";
 const router = Router();
 
 // ── Constante racine POLY_FACTORY ─────────────────────────────────────────────
-const POLY_BASE_PATH = "/home/openclawadmin/openclaw/workspace/POLY_FACTORY/state";
+const POLY_BASE_PATH = process.env.POLY_BASE_PATH || "/home/openclawadmin/openclaw/workspace/POLY_FACTORY/state";
 
 // Stratégies connues — fallback si registry vide (paper mode démarrant)
 const KNOWN_STRATEGIES = [
