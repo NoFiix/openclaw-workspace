@@ -23,6 +23,13 @@ from datetime import datetime, timezone
 # Ensure repo root is on the path when invoked directly
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Load .env BEFORE any agent imports that read os.environ at module level
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+except ImportError:
+    pass  # python-dotenv not installed — rely on ecosystem.config.cjs env injection
+
 from core.poly_factory_orchestrator import PolyFactoryOrchestrator
 from core.poly_strategy_account import PolyStrategyAccount
 from core.poly_strategy_registry import PolyStrategyRegistry
