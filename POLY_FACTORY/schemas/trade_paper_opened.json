@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "trade_paper_opened",
+  "title": "trade:paper_executed",
+  "description": "Emitted by POLY_PAPER_EXECUTION_ENGINE after a simulated trade is filled.",
+  "type": "object",
+  "required": ["trade_id", "execution_mode", "strategy", "account_id", "market_id", "platform", "direction", "fill_price", "size_eur", "fees"],
+  "additionalProperties": true,
+  "properties": {
+    "trade_id":         { "type": "string", "pattern": "^TRD_\\d{8}_\\d{4}$" },
+    "execution_mode":   { "type": "string", "enum": ["paper"] },
+    "strategy":         { "type": "string" },
+    "account_id":       { "type": "string" },
+    "market_id":        { "type": "string" },
+    "platform":         { "type": "string" },
+    "direction":        { "type": "string" },
+    "fill_price":       { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "slippage_actual":  { "type": "number" },
+    "size_eur":         { "type": "number", "minimum": 0.0 },
+    "fees":             { "type": "number", "minimum": 0.0 },
+    "gas_cost":         { "type": "number", "minimum": 0.0 },
+    "tx_hash":          { "type": ["string", "null"] },
+    "execution_time_ms":{ "type": "number", "minimum": 0.0 }
+  }
+}

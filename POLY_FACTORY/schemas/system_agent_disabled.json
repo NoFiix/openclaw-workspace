@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "system_agent_disabled",
+  "title": "system:agent_disabled",
+  "description": "Emitted by POLY_HEARTBEAT when an agent exceeds MAX_RESTARTS and is disabled.",
+  "type": "object",
+  "required": ["agent", "restart_count"],
+  "additionalProperties": true,
+  "properties": {
+    "agent":         { "type": "string" },
+    "restart_count": { "type": "integer", "minimum": 0 }
+  }
+}

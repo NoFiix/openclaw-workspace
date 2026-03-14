@@ -9,11 +9,91 @@ Uses PolyDataStore for all file I/O.
 
 import collections
 import json
+import logging
 import os
 import threading
 from datetime import datetime, timezone
 
 from core.poly_data_store import PolyDataStore
+
+logger = logging.getLogger("POLY_EVENT_BUS")
+
+# Maps bus topic -> JSON schema filename (in schemas/ dir relative to this file's parent)
+TOPIC_SCHEMAS = {
+    "trade:signal":             "trade_signal.json",
+    "execute:paper":            "execute_paper.json",
+    "execute:live":             "execute_live.json",
+    "feed:price_update":        "feed_price_update.json",
+    "feed:noaa_update":         "feed_noaa_update.json",
+    "feed:wallet_update":       "feed_wallet_update.json",
+    "signal:binance_score":     "signal_binance_score.json",
+    "signal:market_structure":  "signal_market_structure.json",
+    "signal:wallet_convergence": "signal_wallet_convergence.json",
+    "signal:resolution_parsed": "signal_resolution_parsed.json",
+    "data:validation_failed":   "data_validation_failed.json",
+    "system:health_check":      "system_health_report.json",
+    "system:agent_stale":       "system_agent_stale.json",
+    "system:agent_disabled":    "system_agent_disabled.json",
+    "risk:kill_switch":         "risk_kill_switch_triggered.json",
+    "risk:global_status":       "risk_global_halt.json",
+    "trade:paper_executed":     "trade_paper_opened.json",
+    "trade:paper_closed":       "trade_paper_closed.json",
+    "trade:live_executed":      "trade_live_opened.json",
+    "trade:live_closed":        "trade_live_closed.json",
+}
+
+_SCHEMAS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "schemas")
+_schema_cache = {}
+
+
+def _load_schema(filename):
+    """Load and cache a JSON schema from the schemas/ directory."""
+    if filename in _schema_cache:
+        return _schema_cache[filename]
+    path = os.path.join(_SCHEMAS_DIR, filename)
+    if not os.path.exists(path):
+        return None
+    with open(path, "r", encoding="utf-8") as f:
+        schema = json.load(f)
+    _schema_cache[filename] = schema
+    return schema
+
+
+def validate_payload(topic, payload):
+    """Validate a payload dict against its JSON schema (draft-07).
+
+    Non-blocking: logs a warning if the schema is absent.
+    Returns False (invalid) if the payload fails validation so the caller
+    can dead-letter the event. Returns True if valid or no schema exists.
+
+    Args:
+        topic:   Bus topic string.
+        payload: Payload dict to validate.
+
+    Returns:
+        True if payload is valid (or no schema registered for this topic).
+        False if payload is invalid per the schema.
+    """
+    schema_file = TOPIC_SCHEMAS.get(topic)
+    if not schema_file:
+        return True
+
+    schema = _load_schema(schema_file)
+    if schema is None:
+        logger.warning("Schema file not found for topic %s: %s", topic, schema_file)
+        return True
+
+    try:
+        import jsonschema  # noqa: PLC0415
+        jsonschema.validate(instance=payload, schema=schema)
+        return True
+    except ImportError:
+        # jsonschema not installed — skip validation, warn once
+        logger.warning("jsonschema not installed; skipping payload validation for %s", topic)
+        return True
+    except jsonschema.ValidationError as e:
+        logger.warning("Payload validation failed for topic %s: %s", topic, e.message)
+        return False
 
 
 # Topics that use overwrite mode: only the latest value per key matters.
@@ -92,6 +172,9 @@ class PolyEventBus:
         Returns:
             The full envelope dict.
         """
+        # Validate payload against schema (warn-only; never blocks publish)
+        validate_payload(topic, payload)
+
         now = datetime.now(timezone.utc)
         event_id = self._generate_event_id()
 

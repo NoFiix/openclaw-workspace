@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "feed_price_update",
+  "title": "feed:price_update",
+  "description": "Real-time price data for a prediction market.",
+  "type": "object",
+  "required": ["market_id", "platform", "yes_price", "no_price", "data_status"],
+  "additionalProperties": true,
+  "properties": {
+    "market_id":   { "type": "string" },
+    "platform":    { "type": "string" },
+    "yes_price":   { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "no_price":    { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "yes_ask":     { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "yes_bid":     { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "no_ask":      { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "no_bid":      { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "volume_24h":  { "type": "number", "minimum": 0.0 },
+    "data_status": { "type": "string", "enum": ["VALID", "STALE"] }
+  }
+}

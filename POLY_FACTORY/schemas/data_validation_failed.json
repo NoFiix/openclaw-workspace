@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "data_validation_failed",
+  "title": "data:validation_failed",
+  "description": "Emitted when a data feed fails a quality validation check.",
+  "type": "object",
+  "required": ["source", "check_failed", "reason", "consecutive_failures"],
+  "additionalProperties": true,
+  "properties": {
+    "source":               { "type": "string", "description": "Producer agent name" },
+    "check_failed":         { "type": "string", "description": "Validation check name (e.g. stale_data, price_range)" },
+    "reason":               { "type": "string" },
+    "raw_value":            { "description": "The problematic value" },
+    "consecutive_failures": { "type": "integer", "minimum": 0 }
+  }
+}

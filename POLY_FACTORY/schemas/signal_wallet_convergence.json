@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "signal_wallet_convergence",
+  "title": "signal:wallet_convergence",
+  "description": "Multiple smart wallets holding the same position on a market.",
+  "type": "object",
+  "required": ["market_id", "direction", "convergent_wallets", "wallet_count", "avg_ev_score", "detection_timestamp"],
+  "additionalProperties": true,
+  "properties": {
+    "market_id":           { "type": "string" },
+    "direction":           { "type": "string", "enum": ["YES", "NO"] },
+    "convergent_wallets": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "wallet_count":        { "type": "integer", "minimum": 1 },
+    "avg_ev_score":        { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "detection_timestamp": { "type": "string", "format": "date-time" }
+  }
+}

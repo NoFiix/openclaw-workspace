@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "system_health_report",
+  "title": "system:health_check",
+  "description": "Periodic system health summary from POLY_SYSTEM_MONITOR.",
+  "type": "object",
+  "required": ["status", "checked_at", "total_issues"],
+  "additionalProperties": true,
+  "properties": {
+    "status":            { "type": "string", "enum": ["OK", "WARNING", "ALERT", "CRITICAL"] },
+    "checked_at":        { "type": "string", "format": "date-time" },
+    "total_issues":      { "type": "integer", "minimum": 0 },
+    "agent_issues":      { "type": "integer", "minimum": 0 },
+    "api_issues":        { "type": "integer", "minimum": 0 },
+    "infra_issues":      { "type": "integer", "minimum": 0 },
+    "coherence_issues":  { "type": "integer", "minimum": 0 }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "trade_signal",
+  "title": "trade:signal",
+  "description": "Signal emitted by a strategy agent to request a trade.",
+  "type": "object",
+  "required": ["strategy", "account_id", "market_id", "platform", "direction", "confidence", "suggested_size_eur", "signal_type", "signal_detail"],
+  "additionalProperties": true,
+  "properties": {
+    "strategy":           { "type": "string", "description": "Strategy name (e.g. POLY_ARB_SCANNER)" },
+    "account_id":         { "type": "string", "description": "Strategy account ID (e.g. ACC_POLY_ARB_SCANNER)" },
+    "market_id":          { "type": "string", "description": "Market identifier" },
+    "platform":           { "type": "string", "enum": ["polymarket", "kalshi", "sportsbook"] },
+    "direction":          { "type": "string", "description": "Trade direction (e.g. BUY_YES, BUY_NO, BUY_YES_AND_NO)" },
+    "confidence":         { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "suggested_size_eur": { "type": "number", "minimum": 0.0 },
+    "signal_type":        { "type": "string" },
+    "signal_detail":      { "type": "object", "description": "Strategy-specific detail fields" }
+  }
+}

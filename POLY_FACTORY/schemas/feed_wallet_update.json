@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "feed_wallet_update",
+  "title": "feed:wallet_update",
+  "description": "On-chain wallet positions for a tracked wallet.",
+  "type": "object",
+  "required": ["wallet", "positions", "data_status"],
+  "additionalProperties": true,
+  "properties": {
+    "wallet":      { "type": "string", "description": "Ethereum wallet address" },
+    "positions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["market_id", "side"],
+        "properties": {
+          "market_id": { "type": "string" },
+          "side":      { "type": "string", "enum": ["YES", "NO"] },
+          "size":      { "type": "number" },
+          "avg_price": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+        }
+      }
+    },
+    "data_status": { "type": "string", "enum": ["VALID", "STALE"] }
+  }
+}

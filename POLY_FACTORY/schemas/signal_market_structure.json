@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "signal_market_structure",
+  "title": "signal:market_structure",
+  "description": "Microstructure metrics for a prediction market.",
+  "type": "object",
+  "required": ["market_id", "platform", "spread_bps", "depth_usd", "slippage_1k", "liquidity_score", "executability_score"],
+  "additionalProperties": true,
+  "properties": {
+    "market_id":           { "type": "string" },
+    "platform":            { "type": "string" },
+    "spread_bps":          { "type": "number", "minimum": 0.0 },
+    "depth_usd":           { "type": "number", "minimum": 0.0 },
+    "slippage_1k":         { "type": "number", "minimum": 0.0, "description": "Estimated slippage for 1000 EUR order" },
+    "liquidity_score":     { "type": "number", "minimum": 0.0, "maximum": 100.0 },
+    "executability_score": { "type": "number", "minimum": 0.0, "maximum": 100.0 }
+  }
+}

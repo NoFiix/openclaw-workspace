@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "risk_global_halt",
+  "title": "risk:global_status",
+  "description": "Global risk status update from POLY_GLOBAL_RISK_GUARD.",
+  "type": "object",
+  "required": ["status", "total_loss_eur", "max_loss_eur", "pct_used", "action_taken"],
+  "additionalProperties": true,
+  "properties": {
+    "status":                { "type": "string", "enum": ["NORMAL", "ALERTE", "CRITIQUE", "ARRET_TOTAL"] },
+    "total_loss_eur":        { "type": "number" },
+    "max_loss_eur":          { "type": "number", "minimum": 0.0 },
+    "pct_used":              { "type": "number", "minimum": 0.0 },
+    "action_taken":          { "type": "string", "enum": ["none", "block_new_live_promotions", "halt_all_trading"] },
+    "accounts_contributing": { "type": "object", "additionalProperties": { "type": "number" } }
+  }
+}

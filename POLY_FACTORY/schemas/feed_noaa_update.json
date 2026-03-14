@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "feed_noaa_update",
+  "title": "feed:noaa_update",
+  "description": "Weather forecast update from NOAA for a station.",
+  "type": "object",
+  "required": ["station", "city", "confidence", "forecast_timestamp", "data_status"],
+  "additionalProperties": true,
+  "properties": {
+    "station":                { "type": "string", "description": "ICAO station code" },
+    "city":                   { "type": "string" },
+    "daily_max_forecast_f":   { "type": ["integer", "null"] },
+    "confidence":             { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "forecast_timestamp":     { "type": "string", "format": "date-time" },
+    "data_status":            { "type": "string", "enum": ["VALID", "STALE"] }
+  }
+}

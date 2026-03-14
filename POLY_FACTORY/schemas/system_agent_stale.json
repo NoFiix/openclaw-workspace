@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "system_agent_stale",
+  "title": "system:agent_stale",
+  "description": "Emitted by POLY_HEARTBEAT when an agent has not pinged within expected frequency.",
+  "type": "object",
+  "required": ["agent", "restart_count"],
+  "additionalProperties": true,
+  "properties": {
+    "agent":         { "type": "string" },
+    "last_seen":     { "type": ["string", "null"] },
+    "restart_count": { "type": "integer", "minimum": 0 }
+  }
+}

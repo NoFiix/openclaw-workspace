@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "execute_paper",
+  "title": "execute:paper",
+  "description": "Routed execute payload for paper trading engine.",
+  "type": "object",
+  "required": ["execution_mode", "strategy", "account_id", "market_id", "platform", "direction", "size_eur"],
+  "additionalProperties": true,
+  "properties": {
+    "execution_mode":      { "type": "string", "enum": ["paper"] },
+    "strategy":            { "type": "string" },
+    "account_id":          { "type": "string" },
+    "market_id":           { "type": "string" },
+    "platform":            { "type": "string" },
+    "direction":           { "type": "string" },
+    "size_eur":            { "type": "number", "minimum": 0.0 },
+    "tranches":            { "type": "array", "items": { "type": "object" } },
+    "slippage_estimated":  { "type": ["number", "null"] },
+    "expected_fill_price": { "type": ["number", "null"] }
+  }
+}

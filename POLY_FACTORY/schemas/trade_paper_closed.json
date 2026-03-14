@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "trade_paper_closed",
+  "title": "trade:paper_closed",
+  "description": "Emitted when a paper trade position is closed after market resolution.",
+  "type": "object",
+  "required": ["trade_id", "strategy", "market_id", "pnl_eur"],
+  "additionalProperties": true,
+  "properties": {
+    "trade_id":      { "type": "string" },
+    "strategy":      { "type": "string" },
+    "account_id":    { "type": "string" },
+    "market_id":     { "type": "string" },
+    "direction":     { "type": "string" },
+    "outcome":       { "type": "string", "enum": ["YES", "NO"] },
+    "pnl_eur":       { "type": "number" },
+    "closed_at":     { "type": "string" }
+  }
+}

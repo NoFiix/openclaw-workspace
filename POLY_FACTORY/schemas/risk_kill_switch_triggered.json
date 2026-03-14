@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "risk_kill_switch_triggered",
+  "title": "risk:kill_switch",
+  "description": "Emitted by POLY_KILL_SWITCH when a strategy's risk limit is breached.",
+  "type": "object",
+  "required": ["action", "strategy", "account_id", "reason"],
+  "additionalProperties": true,
+  "properties": {
+    "action":        { "type": "string", "enum": ["stop_strategy", "pause_strategy"] },
+    "strategy":      { "type": "string" },
+    "account_id":    { "type": "string" },
+    "reason":        { "type": "string", "enum": ["total_drawdown_exceeded", "daily_drawdown_exceeded", "consecutive_losses_exceeded", "feed_stale"] },
+    "drawdown_pct":  { "type": ["number", "null"] },
+    "threshold_pct": { "type": ["number", "null"] },
+    "resume_at":     { "type": ["string", "null"] }
+  }
+}

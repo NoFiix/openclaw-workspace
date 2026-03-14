@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "signal_binance_score",
+  "title": "signal:binance_score",
+  "description": "Composite Binance micro-structure signal for a trading pair.",
+  "type": "object",
+  "required": ["symbol", "price", "obi", "cvd", "vwap_position", "momentum", "composite_score"],
+  "additionalProperties": true,
+  "properties": {
+    "symbol":          { "type": "string", "description": "Trading pair symbol (e.g. BTCUSDT)" },
+    "price":           { "type": "number", "minimum": 0.0 },
+    "obi":             { "type": "number", "minimum": -1.0, "maximum": 1.0, "description": "Order Book Imbalance" },
+    "cvd":             { "type": "number", "description": "Cumulative Volume Delta" },
+    "vwap_position":   { "type": "number", "minimum": -1.0, "maximum": 1.0 },
+    "momentum":        { "type": "number", "minimum": -1.0, "maximum": 1.0 },
+    "composite_score": { "type": "number", "minimum": -1.0, "maximum": 1.0 }
+  }
+}

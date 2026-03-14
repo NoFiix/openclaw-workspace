@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "signal_resolution_parsed",
+  "title": "signal:resolution_parsed",
+  "description": "LLM analysis of market resolution conditions.",
+  "type": "object",
+  "required": ["market_id", "boolean_condition", "ambiguity_score", "unexpected_risk_score"],
+  "additionalProperties": true,
+  "properties": {
+    "market_id":             { "type": "string" },
+    "boolean_condition":     { "type": "string", "description": "Parsed binary resolution condition" },
+    "ambiguity_score":       { "type": "integer", "minimum": 0, "maximum": 10 },
+    "unexpected_risk_score": { "type": "integer", "minimum": 0, "maximum": 10 },
+    "source_url":            { "type": ["string", "null"] },
+    "analyzed_at":           { "type": "string" }
+  }
+}
