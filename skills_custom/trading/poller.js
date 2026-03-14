@@ -91,7 +91,7 @@ async function main() {
     const t = nowSec();
 
     for (const sched of schedules) {
-      const { agent_id, every_seconds, jitter_seconds = 0 } = sched;
+      const { agent_id, every_seconds, jitter_seconds = 0, critical = true } = sched;
       const last = lastRun[agent_id] ?? 0;
       const due  = (t - last) >= every_seconds;
       if (!due) continue;
@@ -102,7 +102,9 @@ async function main() {
       const runId = `${agent_id}-${Date.now()}`;
       console.log(`[poller] ▶ ${agent_id} (run=${runId})`);
 
-      const result = await runAgent(agent_id, runId);
+      let result;
+      try { result = await runAgent(agent_id, runId); }
+      catch (e) { if (critical) throw e; result = { ok: false, reason: e.message }; }
       lastRun[agent_id] = nowSec();
 
       if (!result.ok) {
