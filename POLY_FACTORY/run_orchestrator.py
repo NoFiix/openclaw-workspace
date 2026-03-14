@@ -187,8 +187,8 @@ class AgentScheduler:
             ("binance_feed", PolyBinanceFeed(base_path=base_path),               30,  "poll_once"),
             # NOAA weather forecast → feed:noaa_update + noaa_forecasts.json
             ("noaa_feed",    PolyNoaaFeed(base_path=base_path),                  120, "poll_once"),
-            # Polymarket wallet positions → feed:wallet_update
-            ("wallet_feed",  PolyWalletFeed(base_path=base_path),                60,  "poll_once"),
+            # Polymarket wallet positions → feed:wallet_update (10 min: positions require auth)
+            ("wallet_feed",  PolyWalletFeed(base_path=base_path),                600, "poll_once"),
 
             # ── C2: Signal processors ────────────────────────────────────────
             # Reads polymarket_prices.json → publishes signal:market_structure

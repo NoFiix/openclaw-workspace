@@ -38,6 +38,15 @@ MOCK_OBSERVATION = {
     }
 }
 
+# Step 1: /points/{lat},{lon} response (returns the forecast URL)
+MOCK_POINTS = {
+    "properties": {
+        "forecast": "https://api.weather.gov/gridpoints/OKX/37,39/forecast",
+        "forecastHourly": "https://api.weather.gov/gridpoints/OKX/37,39/forecast/hourly",
+    }
+}
+
+# Step 2: /gridpoints/{wfo}/{x},{y}/forecast response (the actual forecast)
 MOCK_FORECAST = {
     "properties": {
         "periods": [
@@ -56,6 +65,14 @@ MOCK_FORECAST = {
         ]
     }
 }
+
+
+def _mock_http_get_forecast(url):
+    """Route mock responses for the 2-step NWS forecast fetch."""
+    if "gridpoints" in url or url.endswith("/forecast"):
+        return MOCK_FORECAST
+    # /points/{lat},{lon} call
+    return MOCK_POINTS
 
 
 class TestBuildPayloadFormat(unittest.TestCase):
@@ -95,7 +112,8 @@ class TestFetchForecastParses(unittest.TestCase):
     def test_fetch_forecast_parses(self):
         with tempfile.TemporaryDirectory() as tmp:
             feed = _make_feed(tmp)
-            with patch.object(feed, "_http_get", return_value=MOCK_FORECAST):
+            # 2-step: first call → MOCK_POINTS (gridpoint URL), second → MOCK_FORECAST
+            with patch.object(feed, "_http_get", side_effect=_mock_http_get_forecast):
                 result = feed.fetch_forecast("KLGA")
 
             self.assertEqual(result["daily_max_forecast_f"], 82)
@@ -110,7 +128,8 @@ class TestPollOnceAllStations(unittest.TestCase):
             def mock_http_get(url):
                 if "observations" in url:
                     return MOCK_OBSERVATION
-                return MOCK_FORECAST
+                # 2-step forecast: /points/{lat},{lon} → MOCK_POINTS, gridpoints → MOCK_FORECAST
+                return _mock_http_get_forecast(url)
 
             with patch.object(feed, "_http_get", side_effect=mock_http_get):
                 results = feed.poll_once()
