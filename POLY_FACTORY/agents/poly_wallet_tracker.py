@@ -23,6 +23,7 @@ from core.poly_event_bus import PolyEventBus
 
 logger = logging.getLogger("POLY_WALLET_TRACKER")
 
+CONSUMER_ID = "POLY_WALLET_TRACKER"
 STATE_FILE = "feeds/wallet_signals.json"
 BLACKLIST_RULES_FILE = "references/wallet_blacklist_rules.json"
 CONVERGENCE_THRESHOLD = 3
@@ -275,3 +276,24 @@ class PolyWalletTracker:
         positions = wallet_payload.get("positions", [])
         self.update(signal["wallet"], signal, positions)
         return signal
+
+    def run_once(self):
+        """Poll feed:wallet_update events and process each wallet.
+
+        The orchestrator does not subscribe to feed:wallet_update, so bus acking
+        here does not conflict with orchestrator's price cache.
+
+        Returns:
+            List of wallet signal dicts processed this cycle.
+        """
+        events = self.bus.poll(CONSUMER_ID, topics=["feed:wallet_update"])
+        results = []
+        for evt in events:
+            event_id = evt.get("event_id")
+            try:
+                results.append(self.process_event(evt.get("payload", {})))
+            except Exception:
+                logger.exception("Failed to process wallet event %s", event_id)
+            finally:
+                self.bus.ack(CONSUMER_ID, event_id)
+        return results

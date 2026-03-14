@@ -23,6 +23,8 @@ logger = logging.getLogger("POLY_MARKET_CONNECTOR")
 
 # State file for cached prices
 PRICES_STATE_FILE = "feeds/polymarket_prices.json"
+# State file for active markets list
+ACTIVE_MARKETS_FILE = "feeds/active_markets.json"
 
 # Default config
 DEFAULT_GAMMA_URL = "https://gamma-api.polymarket.com"
@@ -329,3 +331,34 @@ class ConnectorPolymarket(PolyMarketConnector):
         price_data = self.get_orderbook(market_id)
         self.update_prices(market_id, price_data)
         return price_data
+
+    def poll_markets(self):
+        """Fetch active markets from Gamma API and persist to active_markets.json.
+
+        Also fetches the latest orderbook for each market and publishes
+        feed:price_update events so downstream agents and strategies can consume
+        fresh prices.
+
+        Returns:
+            List of normalized market dicts (may be empty on error).
+        """
+        try:
+            markets = self.get_markets(filter_active=True)
+        except ConnectionError as e:
+            logger.warning("poll_markets: get_markets failed: %s", e)
+            return []
+
+        self.store.write_json(ACTIVE_MARKETS_FILE, markets)
+        logger.info("poll_markets: %d active markets written", len(markets))
+
+        # Fetch and publish price updates for each active market
+        for market in markets:
+            market_id = market.get("market_id")
+            if not market_id:
+                continue
+            try:
+                self.fetch_and_update(market_id)
+            except ConnectionError as e:
+                logger.warning("poll_markets: fetch_and_update(%s) failed: %s", market_id, e)
+
+        return markets

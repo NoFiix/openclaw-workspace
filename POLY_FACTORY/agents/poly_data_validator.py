@@ -25,6 +25,15 @@ TOPIC_VALIDATORS = {
     "feed:wallet_update": "wallet",
 }
 
+# State files written by each feed agent — used by run_once() to avoid
+# bus ack conflicts with other consumers (e.g. PolyFactoryOrchestrator).
+FEED_STATE_FILES = [
+    ("feed:price_update",   "feeds/polymarket_prices.json"),
+    ("feed:binance_update", "feeds/binance_raw.json"),
+    ("feed:noaa_update",    "feeds/noaa_forecasts.json"),
+    ("feed:wallet_update",  "feeds/wallet_raw_positions.json"),
+]
+
 
 class PolyDataValidator:
     """Data quality filter for all incoming feed data."""
@@ -387,3 +396,28 @@ class PolyDataValidator:
 
         result["source_key"] = source_key
         return result
+
+    def run_once(self):
+        """Validate all feed state files and publish data:validation_failed as needed.
+
+        Reads directly from connector/feed state files rather than bus polling to
+        avoid ack conflicts with other consumers (e.g. PolyFactoryOrchestrator
+        consuming feed:price_update).
+
+        Returns:
+            List of validation result dicts (one per entry per feed file).
+        """
+        results = []
+        for topic, state_file in FEED_STATE_FILES:
+            raw = self.store.read_json(state_file) or {}
+            # State files are dicts keyed by market_id / symbol / station / wallet
+            items = raw.values() if isinstance(raw, dict) else raw
+            for payload in items:
+                if not isinstance(payload, dict):
+                    continue
+                evt = {"topic": topic, "payload": payload}
+                try:
+                    results.append(self.process_event(evt))
+                except Exception:
+                    logger.exception("Failed to validate %s entry", topic)
+        return results

@@ -21,6 +21,7 @@ from core.poly_event_bus import PolyEventBus
 logger = logging.getLogger("POLY_MARKET_STRUCTURE_ANALYZER")
 
 STATE_FILE = "feeds/market_structure.json"
+PRICES_STATE_FILE = "feeds/polymarket_prices.json"
 ILLIQUID_THRESHOLD = 40
 
 
@@ -195,3 +196,23 @@ class PolyMarketStructureAnalyzer:
                 },
                 priority="normal",
             )
+
+    def run_once(self):
+        """Read polymarket_prices.json and compute microstructure for every known market.
+
+        Reads directly from the connector's state file to avoid bus ack conflicts
+        with other consumers (e.g. PolyFactoryOrchestrator).
+
+        Returns:
+            List of structure dicts computed this cycle.
+        """
+        raw = self.store.read_json(PRICES_STATE_FILE) or {}
+        results = []
+        for market_id, payload in raw.items():
+            try:
+                structure = self.process_event(payload)
+                self.update(market_id, structure)
+                results.append(structure)
+            except Exception:
+                logger.exception("Failed to process market %s", market_id)
+        return results

@@ -16,6 +16,7 @@ from core.poly_event_bus import PolyEventBus
 logger = logging.getLogger("POLY_BINANCE_SIGNALS")
 
 STATE_FILE = "feeds/binance_signals.json"
+BINANCE_RAW_FILE = "feeds/binance_raw.json"
 
 EMA_5_ALPHA = 2 / 6
 EMA_20_ALPHA = 2 / 21
@@ -242,3 +243,24 @@ class PolyBinanceSignals:
             payload=payload,
             priority="normal",
         )
+
+    def run_once(self):
+        """Read binance_raw.json and compute signals for every known symbol.
+
+        Reads directly from the feed's state file (written by PolyBinanceFeed)
+        rather than bus polling, since OBI computation needs the current orderbook
+        snapshot and bus overwrite mode only delivers the latest event.
+
+        Returns:
+            List of signal payload dicts computed this cycle.
+        """
+        raw = self.store.read_json(BINANCE_RAW_FILE) or {}
+        results = []
+        for symbol, payload in raw.items():
+            try:
+                signal = self.process_tick(payload)
+                self.update(symbol, signal)
+                results.append(signal)
+            except Exception:
+                logger.exception("Failed to process symbol %s", symbol)
+        return results
