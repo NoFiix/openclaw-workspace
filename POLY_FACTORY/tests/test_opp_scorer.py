@@ -54,7 +54,10 @@ class MockLLMClient:
             "probability": self.probability,
             "reasoning":   self.reasoning,
         })
-        return SimpleNamespace(content=[SimpleNamespace(text=text)])
+        return SimpleNamespace(
+            content=[SimpleNamespace(text=text)],
+            usage=SimpleNamespace(input_tokens=100, output_tokens=50),
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -34,6 +34,10 @@ class PolyDataStore:
         "risk",
         "trading",
         "trading/positions_by_strategy",
+        "llm",
+        "memory",
+        "memory/learnings",
+        "strategies",
     ]
 
     # Default JSON files to initialize (relative to base_path)

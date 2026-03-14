@@ -388,16 +388,16 @@ export async function handler(ctx) {
 
   // ── 8b. POLY_FACTORY — Kill switch global + agents désactivés ────────────
   if (POLY_BASE) {
-    const polyPortfolio = readJSON(path.join(POLY_BASE, "risk", "portfolio_state.json"), null);
-    if (polyPortfolio) {
-      if (polyPortfolio.global_status === "ARRET_TOTAL") {
+    const polyGlobalRisk = readJSON(path.join(POLY_BASE, "risk", "global_risk_state.json"), null);
+    if (polyGlobalRisk) {
+      if (polyGlobalRisk.status === "ARRET_TOTAL") {
         addIssue("poly_global_arret_total", "CRIT",
           "POLY_FACTORY - Arret total declenche",
-          `Perte cumulee >= 4 000EUR sur toutes les strategies | statut: ${polyPortfolio.global_status}`);
-      } else if (polyPortfolio.global_status === "CRITIQUE") {
+          `Perte cumulee >= 4 000EUR sur toutes les strategies | statut: ${polyGlobalRisk.status}`);
+      } else if (polyGlobalRisk.status === "CRITIQUE") {
         addIssue("poly_global_risk_critique", "WARN",
           "POLY_FACTORY - Risque global CRITIQUE",
-          `Perte cumulee entre 3 000EUR et 4 000EUR | statut: ${polyPortfolio.global_status}`);
+          `Perte cumulee entre 3 000EUR et 4 000EUR | statut: ${polyGlobalRisk.status}`);
       }
     }
 
@@ -539,8 +539,8 @@ export async function handler(ctx) {
       }
 
       // Kill switch global
-      const polyPortfolioR = readJSON(path.join(POLY_BASE, "risk", "portfolio_state.json"), {});
-      const polyGlobalStatus = polyPortfolioR.global_status ?? "NORMAL";
+      const polyGlobalRiskR = readJSON(path.join(POLY_BASE, "risk", "global_risk_state.json"), {});
+      const polyGlobalStatus = polyGlobalRiskR.status ?? "NORMAL";
       const polyKsIcon = polyGlobalStatus === "ARRET_TOTAL" ? "🔴"
         : polyGlobalStatus === "CRITIQUE" ? "🟠"
         : polyGlobalStatus === "ALERTE"   ? "🟡"

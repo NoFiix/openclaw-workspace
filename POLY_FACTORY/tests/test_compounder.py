@@ -15,6 +15,7 @@ Coverage:
 - run_once() returns dict with trades_analyzed
 """
 
+import datetime
 import json
 import pytest
 from unittest.mock import MagicMock
@@ -27,7 +28,7 @@ from evaluation.poly_compounder import PolyCompounder, TRADE_TOPICS, LEARNINGS_D
 # Helpers / fixtures
 # ---------------------------------------------------------------------------
 
-TEST_DATE     = "2026-03-13"
+TEST_DATE     = datetime.date.today().isoformat()
 TEST_STRATEGY = "POLY_ARB_SCANNER"
 
 VALID_LLM_RESPONSE = json.dumps({

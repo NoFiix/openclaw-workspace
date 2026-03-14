@@ -48,8 +48,8 @@ class PolyEventBus:
         # Per-consumer idempotence sets (bounded deques)
         self._consumer_processed = {}
 
-        # Global set of acked event_ids (for filtering on poll)
-        self._acked_ids = set()
+        # Global deque of acked event_ids, bounded to last 10 000 (spec: CLAUDE.md)
+        self._acked_ids = collections.deque(maxlen=IDEMPOTENCE_SET_SIZE)
 
         # Load previously acked event_ids from processed_events.jsonl
         self._load_acked_ids()
@@ -60,7 +60,7 @@ class PolyEventBus:
         for rec in records:
             eid = rec.get("event_id")
             if eid:
-                self._acked_ids.add(eid)
+                self._acked_ids.append(eid)
 
     def _generate_event_id(self):
         """Generate a unique event ID: EVT_{YYYYMMDD}_{HHMMSS}_{counter:04d}."""
@@ -179,7 +179,7 @@ class PolyEventBus:
         self._consumer_processed[consumer_id].append(event_id)
 
         # Add to global acked set
-        self._acked_ids.add(event_id)
+        self._acked_ids.append(event_id)
 
         # Persist to processed_events.jsonl
         self.store.append_jsonl(PROCESSED_FILE, {
@@ -213,7 +213,7 @@ class PolyEventBus:
             return None
 
         # Mark original as acked (consumed, will be replaced)
-        self._acked_ids.add(event_id)
+        self._acked_ids.append(event_id)
 
         new_retry_count = original.get("retry_count", 0) + 1
 
