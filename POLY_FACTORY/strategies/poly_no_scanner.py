@@ -38,6 +38,7 @@ import re
 from core.poly_audit_log import PolyAuditLog
 from core.poly_data_store import PolyDataStore
 from core.poly_event_bus import PolyEventBus
+from core.poly_log_tokens import log_tokens
 
 
 CONSUMER_ID            = "POLY_NO_SCANNER"
@@ -131,6 +132,14 @@ class PolyNoScanner:
             model=LLM_MODEL,
             max_tokens=LLM_MAX_TOKENS,
             messages=[{"role": "user", "content": prompt}],
+        )
+        log_tokens(
+            self.store.base_path,
+            "POLY_NO_SCANNER",
+            LLM_MODEL,
+            response.usage.input_tokens,
+            response.usage.output_tokens,
+            task="no_scoring",
         )
         return response.content[0].text
 

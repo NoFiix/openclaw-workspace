@@ -46,6 +46,51 @@ const SYSTEM_DATA = [
     ]
   },
   {
+    id: "polymarket", label: "Polymarket", icon: "⬡",
+    desc: "Pipeline prédictif — données → signal → exécution paper/live sur Polymarket",
+    layers: [
+      { name: "Données", color: "#38bdf8", agents: [
+        { id: "POLY_BINANCE_FEED",   interval: "30s",  llm: null, desc: "Prix Binance spot corrélés aux marchés Polymarket (Crypto)", inputs: [], outputs: ["POLY_BINANCE_SIGNALS"] },
+        { id: "POLY_NOAA_FEED",      interval: "1h",   llm: null, desc: "Données météo NOAA pour marchés weather arbitrage", inputs: [], outputs: ["POLY_WEATHER_ARB"] },
+        { id: "POLY_WALLET_FEED",    interval: "5min", llm: null, desc: "Solde et positions du wallet Polymarket on-chain", inputs: [], outputs: ["POLY_WALLET_TRACKER"] },
+        { id: "POLY_WALLET_TRACKER", interval: "5min", llm: null, desc: "Suivi des transactions et positions ouvertes on-chain", inputs: ["POLY_WALLET_FEED"], outputs: ["POLY_EXECUTION_ROUTER"] },
+      ]},
+      { name: "Analyse", color: "#a78bfa", agents: [
+        { id: "POLY_MARKET_CONNECTOR",          interval: "5min", llm: null,    desc: "Connexion Polymarket CLOB API — orderbook, prix YES/NO, liquidité", inputs: [], outputs: ["POLY_DATA_VALIDATOR","POLY_MARKET_STRUCTURE_ANALYZER"] },
+        { id: "POLY_DATA_VALIDATOR",            interval: "5min", llm: null,    desc: "Valide la cohérence des données marché avant traitement signal", inputs: ["POLY_MARKET_CONNECTOR"], outputs: ["POLY_MARKET_ANALYST"] },
+        { id: "POLY_MARKET_ANALYST",            interval: "15min", llm: "Sonnet", desc: "Analyse condition booléenne → ambiguity_score + unexpected_risk_score. Cache par market_id. ~500 tokens/appel", inputs: ["POLY_DATA_VALIDATOR"], outputs: ["POLY_OPP_SCORER","POLY_NO_SCANNER"] },
+        { id: "POLY_MARKET_STRUCTURE_ANALYZER", interval: "1h",   llm: null,    desc: "Liquidité, spread, slippage estimé, market_structure.json par market_id", inputs: ["POLY_MARKET_CONNECTOR"], outputs: ["POLY_PAPER_ENGINE"] },
+        { id: "POLY_BINANCE_SIGNALS",           interval: "5min", llm: null,    desc: "Signaux de corrélation Binance → probabilité marché POLY (crypto)", inputs: ["POLY_BINANCE_FEED"], outputs: ["POLY_ARB_SCANNER"] },
+      ]},
+      { name: "Stratégies", color: "#fbbf24", agents: [
+        { id: "POLY_ARB_SCANNER",      interval: "5min", llm: null,    desc: "Arbitrage entre prix Polymarket et implied prob Binance. Edge > 5%", inputs: ["POLY_BINANCE_SIGNALS"], outputs: ["POLY_RISK_GUARDIAN"] },
+        { id: "POLY_OPP_SCORER",       interval: "5min", llm: "Sonnet", desc: "Score P(YES) par LLM — BUY_YES si prob ≥ 85% et edge > 5%. Cache 4h. ~150 tokens/appel", inputs: ["POLY_MARKET_ANALYST"], outputs: ["POLY_RISK_GUARDIAN"] },
+        { id: "POLY_NO_SCANNER",       interval: "5min", llm: "Haiku",  desc: "Scan marchés NO ≥ 90¢ — BUY_NO si P(NO) ≥ 90%. Cache permanent. ~150 tokens/appel", inputs: ["POLY_MARKET_ANALYST"], outputs: ["POLY_RISK_GUARDIAN"] },
+        { id: "POLY_BROWNIAN_SNIPER",  interval: "5min", llm: null,    desc: "Snipe probabilités mal pricées via mouvement brownien géométrique", inputs: ["POLY_MARKET_CONNECTOR"], outputs: ["POLY_RISK_GUARDIAN"] },
+        { id: "POLY_CONVERGENCE_STRAT",interval: "5min", llm: null,    desc: "Convergence prix marché vers résolution attendue (event proche)", inputs: ["POLY_MARKET_CONNECTOR"], outputs: ["POLY_RISK_GUARDIAN"] },
+        { id: "POLY_LATENCY_ARB",      interval: "5min", llm: null,    desc: "Arbitrage latence entre Polymarket CLOB et feed externe", inputs: ["POLY_MARKET_CONNECTOR"], outputs: ["POLY_RISK_GUARDIAN"] },
+        { id: "POLY_NEWS_STRAT",       interval: "5min", llm: null,    desc: "Momentum sur news — ajuste probabilité sur événements récents", inputs: ["POLY_MARKET_CONNECTOR"], outputs: ["POLY_RISK_GUARDIAN"] },
+        { id: "POLY_PAIR_COST",        interval: "5min", llm: null,    desc: "Pairs trading YES/NO sur marchés corrélés", inputs: ["POLY_MARKET_CONNECTOR"], outputs: ["POLY_RISK_GUARDIAN"] },
+        { id: "POLY_WEATHER_ARB",      interval: "1h",   llm: null,    desc: "Arbitrage marchés météo — compare NOAA forecast vs prix Poly", inputs: ["POLY_NOAA_FEED"], outputs: ["POLY_RISK_GUARDIAN"] },
+      ]},
+      { name: "Risk & Exécution", color: "#f87171", agents: [
+        { id: "POLY_RISK_GUARDIAN",      interval: "on-signal", llm: null, desc: "7 filtres pré-trade : Kelly sizing, spread, liquidité, exposition marché, drawdown, global risk, kill switch", inputs: ["Toutes stratégies"], outputs: ["POLY_EXECUTION_ROUTER"] },
+        { id: "POLY_KILL_SWITCH",        interval: "60s",       llm: null, desc: "Kill switch par stratégie : -5% daily, -30% total. 5 niveaux : OK/WARNING/PAUSE_DAILY/PAUSE_SESSION/STOP_STRATEGY", inputs: [], outputs: ["POLY_RISK_GUARDIAN"] },
+        { id: "POLY_GLOBAL_RISK_GUARD",  interval: "60s",       llm: null, desc: "Garde globale — ALERTE ≥2k€, CRITIQUE ≥3k€, ARRET_TOTAL ≥4k€ pertes cumulées toutes stratégies", inputs: [], outputs: ["POLY_KILL_SWITCH"] },
+        { id: "POLY_EXECUTION_ROUTER",   interval: "on-signal", llm: null, desc: "Route trade:signal vers paper ou live selon statut stratégie dans POLY_STRATEGY_REGISTRY", inputs: ["POLY_RISK_GUARDIAN"], outputs: ["POLY_PAPER_ENGINE"] },
+        { id: "POLY_PAPER_ENGINE",       interval: "on-signal", llm: null, desc: "Simule exécution paper — fill price, slippage, fees. Log trading/paper_trades_log.jsonl", inputs: ["POLY_EXECUTION_ROUTER"], outputs: ["POLY_STRATEGY_EVALUATOR","POLY_TRADING_PUBLISHER"] },
+      ]},
+      { name: "Évaluation & Publication", color: "#34d399", agents: [
+        { id: "POLY_STRATEGY_EVALUATOR",  interval: "quotidien", llm: null, desc: "Score 8 axes : win_rate, sharpe, max_dd, trade_count, expectancy, consistency, decay, tradability. Seuil promotion : 60/100", inputs: ["POLY_PAPER_ENGINE"], outputs: ["POLY_STRATEGY_PROMOTION_GATE"] },
+        { id: "POLY_STRATEGY_PROMOTION_GATE", interval: "on-score", llm: null, desc: "10 vérifications avant proposition live. Gate DÉCIDE. POLY_CAPITAL_MANAGER EXÉCUTE. Approbation humaine JSON signée (7j)", inputs: ["POLY_STRATEGY_EVALUATOR"], outputs: ["POLY_CAPITAL_MANAGER"] },
+        { id: "POLY_STRATEGY_SCOUT",      interval: "hebdo",    llm: null, desc: "Découverte nouvelles stratégies — scan marchés, scoring viabilité, détection réactivation", inputs: [], outputs: ["POLY_STRATEGY_EVALUATOR"] },
+        { id: "POLY_HEARTBEAT",           interval: "60s",      llm: null, desc: "Liveness monitoring + restart auto (max 3) + désactivation après MAX_RESTARTS. Écrit heartbeat_state.json", inputs: [], outputs: ["POLY_SYSTEM_MONITOR"] },
+        { id: "POLY_SYSTEM_MONITOR",      interval: "15min",    llm: null, desc: "Health check agents, API Polymarket, infrastructure, cohérence état. Score 0-100", inputs: ["POLY_HEARTBEAT"], outputs: ["POLY_TRADING_PUBLISHER"] },
+        { id: "POLY_TRADING_PUBLISHER",   interval: "60s",      llm: null, desc: "Alertes Telegram Polymarket — trades LIVE, kill switch, rapports 20h Paris. Bot @POLY_Telegram", inputs: ["POLY_PAPER_ENGINE","POLY_SYSTEM_MONITOR"], outputs: ["@Telegram POLY"] },
+      ]},
+    ]
+  },
+  {
     id: "content", label: "Content", icon: "📡",
     desc: "Pipeline de publication CryptoRizon — scraping → rédaction → publication",
     layers: [
@@ -364,6 +409,84 @@ Projection mensuelle        : ~$2-3/mois
   },
 ];
 
+// ── CONTEXT_BUNDLE_POLYMARKET ─────────────────────────────────────────
+CONTEXT_BUNDLES.splice(1, 0, {
+  id: "polymarket",
+  title: "CONTEXT_BUNDLE_POLYMARKET",
+  subtitle: "POLY_FACTORY · Agents · Pipeline · Règles",
+  color: "#a78bfa",
+  icon: "⬡",
+  content: `# CONTEXT_BUNDLE_POLYMARKET — POLY_FACTORY
+> Dernière mise à jour : 2026-03-14
+
+## 1. Vue d'ensemble
+Système automatisé de découverte, test et déploiement de stratégies sur marchés prédictifs.
+Capital par stratégie : 1 000€ isolé. Kill switch : -5% daily, -30% total.
+Kill switch global : ARRET_TOTAL si pertes cumulées ≥ 4 000€.
+Mode actuel : PAPER TESTING (aucune stratégie en live).
+
+## 2. Structure
+POLY_FACTORY/
+├── core/          → bus, data store, audit, account, registry, log_tokens
+├── agents/        → feeds, heartbeat, market_analyst, system_monitor
+├── strategies/    → arb_scanner, opp_scorer, no_scanner, brownian_sniper...
+├── execution/     → paper_engine, live_engine, execution_router
+├── risk/          → kill_switch, risk_guardian, global_risk_guard, promotion_gate
+├── evaluation/    → evaluator, decay_detector, tuner, scout, backtest
+├── connectors/    → connector_polymarket, connector_kalshi, connector_sportsbook
+├── schemas/       → JSON schemas bus events
+└── state/         → runtime data (NE PAS committer)
+
+## 3. Pipeline — flux principal
+POLY_MARKET_CONNECTOR → POLY_DATA_VALIDATOR → POLY_MARKET_ANALYST (LLM Sonnet)
+  → POLY_OPP_SCORER (LLM Sonnet) → trade:signal → POLY_RISK_GUARDIAN (7 filtres)
+  → POLY_EXECUTION_ROUTER → POLY_PAPER_ENGINE → paper_trades_log.jsonl
+  → POLY_STRATEGY_EVALUATOR (score 8 axes) → POLY_STRATEGY_PROMOTION_GATE
+  → Approbation humaine → POLY_CAPITAL_MANAGER → live account
+
+## 4. Bus events clés
+feed:price_update          → prix YES/NO par market_id (overwrite)
+signal:resolution_parsed   → boolean_condition + ambiguity_score (queue)
+trade:signal               → propositions de trade (queue)
+execute:paper              → ordre paper à exécuter (queue)
+trade:paper_executed       → confirmation exécution paper (queue)
+risk:kill_switch           → niveau KS par stratégie (priority)
+system:agent_disabled      → agent désactivé après MAX_RESTARTS (priority)
+
+## 5. Fichiers d'état clés
+state/orchestrator/system_state.json     → global_risk_status, last_nightly_run
+state/orchestrator/heartbeat_state.json  → statut liveness par agent
+state/risk/global_risk_state.json        → status (NORMAL/ALERTE/CRITIQUE/ARRET_TOTAL)
+state/risk/kill_switch_status.json       → niveau KS par stratégie
+state/accounts/ACC_POLY_*.json           → capital, drawdown, P&L par stratégie
+state/trading/paper_trades_log.jsonl     → log tous les trades paper
+state/evaluation/strategy_scores.json   → scores 8 axes par stratégie
+
+## 6. Agents LLM
+POLY_MARKET_ANALYST  : claude-sonnet-4-6  — ~500 tokens/appel — cache par market_id
+POLY_OPP_SCORER      : claude-sonnet-4-6  — ~150 tokens/appel — cache 4h par market
+POLY_NO_SCANNER      : claude-haiku-4-5-20251001 — ~150 tokens/appel — cache permanent
+
+## 7. Règles critiques
+- Paper NEVER importe py-clob-client
+- Stratégies dans strategies/ UNIQUEMENT — elles émettent trade:signal, PAS d'exécution
+- POLY_EXECUTION_ROUTER route selon registry (paper/live) — jamais un flag booléen
+- Promotion gate DÉCIDE — Capital Manager EXÉCUTE — jamais automatique
+- Backtest seul ne suffit PAS : 50 trades + 14 jours paper requis
+- Comptes isolés — pas de capital partagé entre stratégies
+
+## 8. Token tracking
+Tous les appels LLM POLY écrivent dans state/llm/token_costs.jsonl
+avec system="polymarket". Agrégé par GLOBAL_TOKEN_TRACKER avec trading.
+
+## 9. Variables d'environnement
+ANTHROPIC_API_KEY              → appels LLM
+POLY_API_KEY / POLY_SECRET     → Polymarket CLOB API (live uniquement)
+POLY_TELEGRAM_BOT_TOKEN        → alertes Telegram POLY_TRADING_PUBLISHER
+POLY_TELEGRAM_CHAT_ID          → canal Telegram POLY
+POLY_BASE_PATH                 → override chemin state/ POLY_FACTORY`,
+});
+
 const TYPE_LABEL = { script: "SCRIPT", poller: "POLLER", cron: "CRON" };
 const TYPE_COLOR = { script: "var(--blue)", poller: "var(--amber)", cron: "var(--purple)" };
 
@@ -581,6 +704,13 @@ export default function SystemMap() {
     statusMap[name] = { status: Date.now() - (v.last_run_ts||0)*1000 < 600000 ? "ok" : "warn" };
   });
   (data?.agents ?? []).forEach(a => { statusMap[a.name] = a; });
+
+  // POLY_FACTORY orchestrator status from health endpoint
+  const polyOrch = data?.poly_orchestrator;
+  if (polyOrch) {
+    statusMap["POLY_HEARTBEAT"]    = { status: polyOrch.status };
+    statusMap["POLY_SYSTEM_MONITOR"] = { status: polyOrch.status };
+  }
 
   // Full agent detail map from SYSTEM_DATA
   const agentDetailMap = {};

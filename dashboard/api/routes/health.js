@@ -7,6 +7,7 @@ const router = Router();
 const STATE_DIR    = process.env.STATE_DIR    || "/home/openclawadmin/openclaw/workspace/state/trading";
 const WORKSPACE    = process.env.WORKSPACE_DIR  || "/home/openclawadmin/openclaw/workspace";
 const AGGREGATES   = process.env.AGGREGATES_DIR || "/home/openclawadmin/openclaw/dashboard-data/aggregates";
+const POLY_STATE   = process.env.POLY_BASE_PATH  || "/home/openclawadmin/openclaw/workspace/POLY_FACTORY/state";
 
 // Cache TTL 15s
 let cache = null;
@@ -153,6 +154,15 @@ router.get("/", (req, res) => {
   allAgents.push({ name: "content/poller.js", last_run_ts: null, every_seconds: null, status: contentPid ? "ok" : "error" });
   allAgents.push({ name: "poller.js",         last_run_ts: null, every_seconds: null, status: contentPid ? "ok" : "error" });
 
+  // ── POLY_FACTORY orchestrateur ────────────────────────────────────────────
+  const polySystemState = readJSON(join(POLY_STATE, "orchestrator/system_state.json"));
+  const polyRiskState   = readJSON(join(POLY_STATE, "risk/global_risk_state.json"));
+  const polyOrchestratorPid = getPollerPid("run_orchestrator.py");
+  const polyGlobalRiskStatus = polyRiskState?.status ?? polySystemState?.global_risk_status ?? "NORMAL";
+  const polyOrchestratorStatus = polyOrchestratorPid ? "ok"
+    : polySystemState ? "warn"   // state exists but process not running
+    : "unknown";
+
   const agentsOk      = allAgents.filter(a => a.status === "ok").length;
   const agentsWarn    = allAgents.filter(a => a.status === "warn").length;
   const agentsError   = allAgents.filter(a => a.status === "error").length;
@@ -173,6 +183,12 @@ router.get("/", (req, res) => {
     snapshot: snap ?? null,
     agents: allAgents,
     agents_summary: { total: allAgents.length, ok: agentsOk, warn: agentsWarn, error: agentsError, unknown: agentsUnknown },
+    poly_orchestrator: {
+      status:            polyOrchestratorStatus,
+      pid:               polyOrchestratorPid,
+      global_risk_status: polyGlobalRiskStatus,
+      last_nightly_run:  polySystemState?.last_nightly_run ?? null,
+    },
   };
   cacheTs = now;
   res.json(cache);

@@ -35,7 +35,9 @@ function calcCost(model, usage) {
   const output = usage?.output_tokens ?? 0;
   const PRICES = {
     "claude-haiku-4-5-20251001": { in: 0.80,  out: 4.00  },
+    "claude-sonnet-4-6":         { in: 3.00,  out: 15.00 },
     "claude-sonnet-4-20250514":  { in: 3.00,  out: 15.00 },
+    "claude-opus-4-6":           { in: 15.00, out: 75.00 },
     "claude-opus-4-20250514":    { in: 15.00, out: 75.00 },
     "gpt-4o":                    { in: 2.50,  out: 10.00 },
     "gpt-4o-mini":               { in: 0.15,  out: 0.60  },

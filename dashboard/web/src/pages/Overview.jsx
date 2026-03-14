@@ -37,14 +37,16 @@ export default function Overview() {
   const fetchContent = useCallback(() => api.content(),        []);
   const fetchHistory = useCallback(() => api.tradingHistory(), []);
   const fetchTrades  = useCallback(() => api.tradingTrades(),  []);
+  const fetchPolyLive = useCallback(() => api.polyLive(),      []);
 
-  const { data: health,  loading: lH, lastUpdated } = useApiData(fetchHealth,   30000);
-  const { data: live,    loading: lT }              = useApiData(fetchTrading,  30000);
-  const { data: perf,                }              = useApiData(fetchPerf,     60000);
-  const { data: costs,               }              = useApiData(fetchCosts,    60000);
-  const { data: content,             }              = useApiData(fetchContent,  60000);
-  const { data: history,             }              = useApiData(fetchHistory, 120000);
-  const { data: tradeData,           }              = useApiData(fetchTrades,   60000);
+  const { data: health,   loading: lH, lastUpdated } = useApiData(fetchHealth,   30000);
+  const { data: live,     loading: lT }              = useApiData(fetchTrading,  30000);
+  const { data: perf,                 }              = useApiData(fetchPerf,     60000);
+  const { data: costs,                }              = useApiData(fetchCosts,    60000);
+  const { data: content,              }              = useApiData(fetchContent,  60000);
+  const { data: history,              }              = useApiData(fetchHistory, 120000);
+  const { data: tradeData,            }              = useApiData(fetchTrades,   60000);
+  const { data: polyLive,             }              = useApiData(fetchPolyLive, 30000);
 
   if (lH && lT && !health && !live) return <LoadingState text="Chargement..." />;
 
@@ -62,6 +64,21 @@ export default function Overview() {
   const maxDrawdown  = g.max_drawdown_pct ?? null;
   const openSlots    = 3 - (live?.open_positions ?? 0);
   const projectedMonth = costs?.today != null ? (costs.today * 30).toFixed(4) : null;
+
+  // ── POLY_FACTORY derived state ──────────────────────────────────────────
+  const polyRiskStatus   = polyLive?.global_risk_status ?? 'NORMAL';
+  const polyPnl          = polyLive?.global_pnl_eur ?? null;
+  const polyStrategies   = (polyLive?.active_strategies ?? []).length;
+  const polyRiskColor    = polyRiskStatus === 'NORMAL'      ? 'var(--green)'
+                         : polyRiskStatus === 'ALERTE'      ? 'var(--amber)'
+                         : polyRiskStatus === 'CRITIQUE'    ? '#fb923c'
+                         : /* ARRET_TOTAL */                  'var(--red)';
+  const polyRiskBg       = polyRiskStatus === 'NORMAL'      ? 'var(--green-glow)'
+                         : polyRiskStatus === 'ALERTE'      ? 'var(--amber-glow)'
+                         : polyRiskStatus === 'CRITIQUE'    ? 'rgba(251,146,60,0.1)'
+                         : /* ARRET_TOTAL */                  'var(--red-glow)';
+  const polyRiskBorder   = polyRiskColor;
+  const polyArret        = polyRiskStatus === 'ARRET_TOTAL';
 
   return (
     <div>
@@ -86,6 +103,34 @@ export default function Overview() {
           <span style={{ color: (live?.pnl_today ?? 0) >= 0 ? 'var(--green)' : 'var(--red)' }}>
             {fmtUSD(live?.pnl_today ?? 0)}
           </span>
+        </span>
+      </div>
+
+      {/* POLY_FACTORY Kill Switch Banner */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px',
+        borderRadius: 'var(--radius)', border: `1px solid ${polyRiskBorder}`, marginBottom: 16,
+        background: polyRiskBg,
+        animation: polyArret ? 'pulse-red 1.2s infinite' : undefined,
+      }}>
+        <span style={{
+          width: 6, height: 6, borderRadius: '50%', display: 'inline-block', flexShrink: 0,
+          background: polyRiskColor,
+          boxShadow: `0 0 6px ${polyRiskColor}`,
+        }} />
+        <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 11, letterSpacing: '.08em', textTransform: 'uppercase', color: polyRiskColor }}>
+          POLY: {polyRiskStatus === 'NORMAL'      ? 'NORMAL — TRADING ACTIF'
+               : polyRiskStatus === 'ALERTE'      ? 'ALERTE — PERTES > 2 000€'
+               : polyRiskStatus === 'CRITIQUE'    ? 'CRITIQUE — PERTES > 3 000€'
+               : 'ARRET TOTAL — TRADING STOPPÉ'}
+        </span>
+        <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-secondary)' }}>
+          Stratégies: <span style={{ color: 'var(--amber)' }}>{polyStrategies}</span>
+          {polyPnl != null && <>{' · '}P&L:{' '}
+            <span style={{ color: polyPnl >= 0 ? 'var(--green)' : 'var(--red)' }}>
+              {polyPnl >= 0 ? '+' : ''}{polyPnl.toFixed(2)}€
+            </span>
+          </>}
         </span>
       </div>
 
@@ -149,6 +194,37 @@ export default function Overview() {
           color={maxDrawdown != null && maxDrawdown > 2 ? 'red' : maxDrawdown != null && maxDrawdown > 1 ? 'amber' : 'green'}
           sub="kill switch à -3% journalier"
           tooltip="Perte maximale depuis un pic de capital. Le kill switch coupe automatiquement le trading à -3% de drawdown journalier."
+        />
+      </div>
+
+      {/* Rangée POLY_FACTORY — 3 métriques */}
+      <SectionTitle>Polymarket</SectionTitle>
+      <div className="g4 mb24">
+        <MetricCard
+          label="P&L Paper Global"
+          value={polyPnl != null ? `${polyPnl >= 0 ? '+' : ''}${polyPnl.toFixed(2)}€` : '—'}
+          color={polyPnl != null ? (polyPnl >= 0 ? 'green' : 'red') : ''}
+          sub="paper trading cumulé"
+          tooltip="Somme des P&L de toutes les stratégies POLY en mode paper. N'inclut pas les positions ouvertes non résolues."
+        />
+        <MetricCard
+          label="Stratégies Actives"
+          value={polyStrategies || '—'}
+          color="blue"
+          sub="en paper trading"
+        />
+        <MetricCard
+          label="Risk Global POLY"
+          value={polyRiskStatus}
+          color={polyRiskStatus === 'NORMAL' ? 'green' : polyRiskStatus === 'ALERTE' ? 'amber' : 'red'}
+          sub="seuil ARRET_TOTAL : 4 000€"
+          tooltip="Statut du POLY_GLOBAL_RISK_GUARD. ALERTE > 2000€ pertes, CRITIQUE > 3000€, ARRET_TOTAL > 4000€."
+        />
+        <MetricCard
+          label="Orchestrateur POLY"
+          value={health?.poly_orchestrator?.status?.toUpperCase() ?? '—'}
+          color={health?.poly_orchestrator?.status === 'ok' ? 'green' : health?.poly_orchestrator?.status === 'warn' ? 'amber' : ''}
+          sub={health?.poly_orchestrator?.last_nightly_run ? `run: ${health.poly_orchestrator.last_nightly_run.slice(0, 10)}` : 'pas de run nocturne'}
         />
       </div>
 

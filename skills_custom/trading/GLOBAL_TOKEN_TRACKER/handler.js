@@ -28,6 +28,10 @@ async function sendTelegram(token, chatId, text) {
 function fmtCost(n) { return `$${n.toFixed(4)}`; }
 function fmtNum(n)  { return n.toLocaleString("fr-FR"); }
 
+const POLY_COSTS_FILE = process.env.POLY_BASE_PATH
+  ? path.join(process.env.POLY_BASE_PATH, "llm/token_costs.jsonl")
+  : "/home/openclawadmin/openclaw/workspace/POLY_FACTORY/state/llm/token_costs.jsonl";
+
 export async function handler(ctx) {
   const token  = process.env.TRADER_TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TRADER_TELEGRAM_CHAT_ID;
@@ -41,9 +45,21 @@ export async function handler(ctx) {
     return;
   }
 
-  const lines = fs.readFileSync(costsFile, "utf-8").split("\n").filter(Boolean);
-  const entries = lines.map(l => { try { return JSON.parse(l); } catch { return null; } })
-                       .filter(Boolean);
+  const readJSONL = (filePath) => {
+    if (!fs.existsSync(filePath)) return [];
+    return fs.readFileSync(filePath, "utf-8").split("\n").filter(Boolean)
+      .map(l => { try { return JSON.parse(l); } catch { return null; } })
+      .filter(Boolean);
+  };
+
+  // Merge trading + polymarket JSONL
+  const tradingEntries = readJSONL(costsFile);
+  const polyEntries    = readJSONL(POLY_COSTS_FILE);
+  const entries = [...tradingEntries, ...polyEntries];
+
+  if (polyEntries.length > 0) {
+    ctx.log(`📊 Polymarket tokens: ${polyEntries.length} entrées fusionnées`);
+  }
 
   if (!entries.length) { ctx.log("Fichier vide"); return; }
 
