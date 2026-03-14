@@ -91,6 +91,11 @@ class ConnectorPolymarket(PolyMarketConnector):
     def _http_get(self, url):
         """Make an HTTP GET request and return parsed JSON.
 
+        The Gamma REST API is public — no Authorization header is sent here.
+        CLOB API authentication is handled separately via _get_clob_client().
+        Sending an API key to the Gamma API causes 403 when the key is invalid
+        or expired, even for public endpoints.
+
         Args:
             url: Full URL to request.
 
@@ -102,9 +107,8 @@ class ConnectorPolymarket(PolyMarketConnector):
         """
         req = urllib.request.Request(url)
         req.add_header("Accept", "application/json")
-
-        if self.api_key:
-            req.add_header("Authorization", f"Bearer {self.api_key}")
+        # Cloudflare blocks the default Python-urllib User-Agent with 403
+        req.add_header("User-Agent", "Mozilla/5.0 (compatible; POLY_FACTORY/1.0)")
 
         try:
             with urllib.request.urlopen(req, timeout=30) as resp:
@@ -133,13 +137,14 @@ class ConnectorPolymarket(PolyMarketConnector):
 
         for m in items:
             markets.append({
-                "market_id": m.get("condition_id", m.get("id", "")),
+                # Gamma API uses camelCase: conditionId, endDate, volume24hr
+                "market_id": m.get("conditionId", m.get("condition_id", m.get("id", ""))),
                 "question": m.get("question", ""),
                 "active": m.get("active", True),
-                "end_date": m.get("end_date_iso", m.get("end_date", "")),
+                "end_date": m.get("endDate", m.get("end_date_iso", m.get("end_date", ""))),
                 "platform": "polymarket",
                 "slug": m.get("slug", ""),
-                "volume_24h": float(m.get("volume_24hr", 0) or 0),
+                "volume_24h": float(m.get("volume24hr", m.get("volume_24hr", 0)) or 0),
             })
 
         return markets

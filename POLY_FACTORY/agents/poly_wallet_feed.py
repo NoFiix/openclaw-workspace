@@ -73,6 +73,8 @@ class PolyWalletFeed:
         """
         req = urllib.request.Request(url)
         req.add_header("Accept", "application/json")
+        # Cloudflare blocks the default Python-urllib User-Agent with 403
+        req.add_header("User-Agent", "Mozilla/5.0 (compatible; POLY_FACTORY/1.0)")
 
         try:
             with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
@@ -143,6 +145,10 @@ class PolyWalletFeed:
     def fetch_wallet(self, wallet):
         """Fetch positions for a wallet with Gamma primary, RPC fallback.
 
+        403 from Gamma means the positions endpoint requires authentication.
+        In that case, return empty positions silently (no RPC fallback attempt)
+        since the wallet feed is a best-effort signal, not a hard dependency.
+
         Args:
             wallet: Ethereum wallet address.
 
@@ -152,6 +158,12 @@ class PolyWalletFeed:
         try:
             positions = self.fetch_positions_gamma(wallet)
         except (ConnectionError, TimeoutError) as e:
+            if "HTTP 403" in str(e):
+                logger.warning(
+                    "Wallet %s: Gamma positions require auth (403) — skipping RPC, returning empty",
+                    wallet,
+                )
+                return self._build_payload(wallet, [], data_status="VALID")
             logger.warning("Gamma API failed for %s: %s — trying RPC", wallet, e)
             positions = self.fetch_positions_rpc(wallet)
 

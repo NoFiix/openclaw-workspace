@@ -22,7 +22,8 @@ logger = logging.getLogger("POLY_NOAA_FEED")
 STATE_FILE = "feeds/noaa_forecasts.json"
 STATION_MAPPING_FILE = "references/station_mapping.json"
 NWS_OBSERVATIONS_URL = "https://api.weather.gov/stations/{station}/observations/latest"
-NWS_FORECAST_URL = "https://api.weather.gov/points/{lat},{lon}/forecast"
+# Step 1: /points returns the gridpoint forecast URL in properties.forecast
+NWS_POINTS_URL = "https://api.weather.gov/points/{lat},{lon}"
 USER_AGENT = "POLY_FACTORY/1.0 (openclaw; weather-feed)"
 HTTP_TIMEOUT = 30
 FRESHNESS_THRESHOLD = 300  # 5 minutes
@@ -113,6 +114,12 @@ class PolyNoaaFeed:
     def fetch_forecast(self, station):
         """Fetch daily forecast for a station's coordinates.
 
+        NWS requires a two-step fetch:
+          1. GET /points/{lat},{lon}  → returns properties.forecast URL
+          2. GET {forecast_url}       → returns the actual forecast periods
+
+        Calling /points/{lat},{lon}/forecast directly returns 404.
+
         Args:
             station: ICAO station code (e.g. "KLGA").
 
@@ -120,8 +127,12 @@ class PolyNoaaFeed:
             Dict with daily_max_forecast_f and confidence.
         """
         info = self.stations[station]
-        url = NWS_FORECAST_URL.format(lat=info["lat"], lon=info["lon"])
-        data = self._http_get(url)
+        # Step 1: resolve gridpoint and get the forecast URL
+        points_url = NWS_POINTS_URL.format(lat=info["lat"], lon=info["lon"])
+        points_data = self._http_get(points_url)
+        forecast_url = points_data["properties"]["forecast"]
+        # Step 2: fetch the actual forecast
+        data = self._http_get(forecast_url)
 
         props = data.get("properties", {})
         periods = props.get("periods", [])
