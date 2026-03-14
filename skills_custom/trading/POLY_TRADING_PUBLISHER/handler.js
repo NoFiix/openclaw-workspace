@@ -116,6 +116,7 @@ function accountSummary(acc) {
     status:        acc.status || 'unknown',
     pnl_eur:       pnl,
     pnl_pct:       pct,
+    day_pnl_eur:   acc.pnl?.daily ?? 0,
     max_drawdown:  dd.max_drawdown_pct,
     trade_count:   acc.performance?.total_trades ?? null,
     win_rate:      acc.performance?.win_rate     ?? null,

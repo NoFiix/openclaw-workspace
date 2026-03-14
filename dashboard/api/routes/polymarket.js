@@ -136,10 +136,10 @@ router.get("/live", (req, res) => {
 
   for (const name of strategyNames) {
     const acc     = accounts[name];
-    const initial = acc?.initial_capital_eur ?? INITIAL_CAPITAL;
-    const current = acc?.current_capital_eur ?? INITIAL_CAPITAL;
-    const pnl     = acc?.total_pnl_eur       ?? 0;
-    const dayPnl  = acc?.daily_pnl_eur        ?? 0;
+    const initial = acc?.capital?.initial ?? INITIAL_CAPITAL;
+    const current = acc?.capital?.current ?? INITIAL_CAPITAL;
+    const pnl     = acc?.pnl?.total       ?? 0;
+    const dayPnl  = acc?.pnl?.daily       ?? 0;
     total_capital_deployed += initial;
     total_pnl_paper        += pnl;
     pnl_today              += dayPnl;
@@ -231,11 +231,11 @@ router.get("/strategies", (req, res) => {
     const trades  = tradesByStrategy[name]   ?? [];
     const { win_rate, sharpe, max_drawdown } = computeMetrics(trades);
 
-    const initial     = acc?.initial_capital_eur ?? INITIAL_CAPITAL;
-    const current     = acc?.current_capital_eur ?? INITIAL_CAPITAL;
-    const pnl_eur     = acc?.total_pnl_eur        ?? 0;
+    const initial     = acc?.capital?.initial ?? INITIAL_CAPITAL;
+    const current     = acc?.capital?.current ?? INITIAL_CAPITAL;
+    const pnl_eur     = acc?.pnl?.total       ?? 0;
     const pnl_percent = parseFloat(((pnl_eur / initial) * 100).toFixed(2));
-    const drawdown    = acc?.max_drawdown_pct      ?? max_drawdown ?? 0;
+    const drawdown    = acc?.drawdown?.max_drawdown_pct ?? max_drawdown ?? 0;
 
     const lastTrade   = trades.length ? trades[trades.length - 1] : null;
 

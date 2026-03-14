@@ -371,6 +371,8 @@ class PolyFactoryOrchestrator:
             "filters_passed": result["filters_passed"],
             "executability_score": result["executability_score"],
             "slippage_estimated": result["slippage_estimated"],
+            "expected_fill_price": (payload.get("signal_detail") or {}).get("yes_ask")
+                                or (payload.get("signal_detail") or {}).get("no_ask"),
         }
 
         self.bus.publish("trade:validated", CONSUMER_ID, validated_payload)

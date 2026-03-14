@@ -69,7 +69,8 @@ class PolyExecutionRouter:
             "direction":       payload["direction"],
             "size_eur":        payload["validated_size_eur"],
             "tranches":        payload.get("tranches", []),
-            "slippage_estimated": payload.get("slippage_estimated"),
+            "slippage_estimated":  payload.get("slippage_estimated"),
+            "expected_fill_price": payload.get("expected_fill_price"),
         }
 
         # 4. Publish to the execution topic
