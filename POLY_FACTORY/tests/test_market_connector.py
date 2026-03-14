@@ -232,8 +232,10 @@ class TestReconnectBackoff:
 
 
 class TestPlaceOrder:
-    def test_raises_not_implemented(self, connector):
-        with pytest.raises(NotImplementedError):
+    def test_requires_credentials(self, connector):
+        # place_order is implemented — it raises KeyError/Exception when
+        # WALLET_PRIVATE_KEY / POLYMARKET_API_KEY are absent (test environment).
+        with pytest.raises(Exception):
             connector.place_order("0xabc", "YES", 100, 0.50)
 
 
