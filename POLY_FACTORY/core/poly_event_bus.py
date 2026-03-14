@@ -119,10 +119,15 @@ DEAD_LETTER_FILE = "bus/dead_letter.jsonl"
 class PolyEventBus:
     """File-based event bus with polling, idempotence, and priority support."""
 
+    # Class-level counter shared across all instances in the same process.
+    # Prevents event_id collisions when multiple bus instances publish events
+    # within the same second (e.g. orchestrator + arb_scanner in same loop tick).
+    _class_counter: int = 0
+    _class_counter_date: str | None = None
+    _class_lock: threading.Lock = threading.Lock()
+
     def __init__(self, base_path="state"):
         self.store = PolyDataStore(base_path=base_path)
-        self._counter = 0
-        self._counter_date = None
         self._lock = threading.Lock()
 
         # Per-consumer idempotence sets (bounded deques)
@@ -146,17 +151,22 @@ class PolyEventBus:
                 self._acked_ids.append(eid)
 
     def _generate_event_id(self):
-        """Generate a unique event ID: EVT_{YYYYMMDD}_{HHMMSS}_{counter:04d}."""
+        """Generate a unique event ID: EVT_{YYYYMMDD}_{HHMMSS}_{counter:04d}.
+
+        The counter is class-level (shared across all instances in the process)
+        to prevent collisions when multiple bus instances publish events within
+        the same second.
+        """
         now = datetime.now(timezone.utc)
         date_str = now.strftime("%Y%m%d")
         time_str = now.strftime("%H%M%S")
 
-        with self._lock:
-            if self._counter_date != date_str:
-                self._counter = 0
-                self._counter_date = date_str
-            self._counter += 1
-            counter = self._counter
+        with PolyEventBus._class_lock:
+            if PolyEventBus._class_counter_date != date_str:
+                PolyEventBus._class_counter = 0
+                PolyEventBus._class_counter_date = date_str
+            PolyEventBus._class_counter += 1
+            counter = PolyEventBus._class_counter
 
         return f"EVT_{date_str}_{time_str}_{counter:04d}"
 

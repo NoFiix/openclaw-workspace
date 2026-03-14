@@ -24,6 +24,8 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from core.poly_factory_orchestrator import PolyFactoryOrchestrator
+from core.poly_strategy_account import PolyStrategyAccount
+from core.poly_strategy_registry import PolyStrategyRegistry
 
 # ---------------------------------------------------------------------------
 # Agent imports
@@ -58,6 +60,20 @@ from execution.poly_paper_execution_engine import PolyPaperExecutionEngine
 POLL_INTERVAL_S = 2.0   # main loop cadence (1-5s per architecture spec)
 BASE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "state")
 
+# Strategies that must have accounts and registry entries before the main loop starts.
+# Each tuple: (strategy_name, category)
+STRATEGIES = [
+    ("POLY_ARB_SCANNER",      "arbitrage"),
+    ("POLY_WEATHER_ARB",      "arbitrage"),
+    ("POLY_LATENCY_ARB",      "arbitrage"),
+    ("POLY_BROWNIAN_SNIPER",  "momentum"),
+    ("POLY_PAIR_COST",        "cost"),
+    ("POLY_OPP_SCORER",       "scoring"),
+    ("POLY_NO_SCANNER",       "directional"),
+    ("POLY_CONVERGENCE_STRAT","convergence"),
+    ("POLY_NEWS_STRAT",       "news"),
+]
+
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
@@ -88,6 +104,60 @@ signal.signal(signal.SIGINT, _handle_signal)
 # ---------------------------------------------------------------------------
 # AgentScheduler
 # ---------------------------------------------------------------------------
+
+
+def _bootstrap_strategies(base_path):
+    """Ensure every strategy has a registry entry, a paper-testing account,
+    and a lifecycle entry in the orchestrator's lifecycle file.
+
+    Safe to call on every startup: all operations are idempotent (catch ValueError
+    when an entry already exists).
+
+    The lifecycle file must be pre-populated so that PolyFactoryOrchestrator.
+    _compute_total_active_capital() can sum accounts and the risk_guardian sees
+    a non-zero total_capital_eur (otherwise it treats any trade as 100% exposure
+    and blocks everything with "max_exposure").
+    """
+    from core.poly_data_store import PolyDataStore
+    store = PolyDataStore(base_path=base_path)
+
+    registry = PolyStrategyRegistry(base_path=base_path)
+    for name, category in STRATEGIES:
+        # Registry entry
+        try:
+            registry.register(
+                name=name,
+                category=category,
+                platform="polymarket",
+                parameters={},
+            )
+            registry.update_status(name, "paper_testing")
+            logger.info("bootstrap: registered strategy %s", name)
+        except ValueError:
+            pass  # already registered — fine
+
+        # Strategy account
+        try:
+            PolyStrategyAccount.create(
+                strategy=name,
+                platform="polymarket",
+                base_path=base_path,
+            )
+            logger.info("bootstrap: created account ACC_%s", name)
+        except ValueError:
+            pass  # account already exists — fine
+
+    # Lifecycle file: ensure every strategy has an entry so the orchestrator
+    # can compute total_active_capital (needed by the risk_guardian filter).
+    lifecycle = store.read_json("orchestrator/strategy_lifecycle.json") or {}
+    changed = False
+    for name, _category in STRATEGIES:
+        if name not in lifecycle:
+            lifecycle[name] = {"lifecycle_phase": "paper", "promotion_requested": False}
+            changed = True
+    if changed:
+        store.write_json("orchestrator/strategy_lifecycle.json", lifecycle)
+        logger.info("bootstrap: lifecycle file initialised for %d strategies", len(lifecycle))
 
 
 class AgentScheduler:
@@ -146,6 +216,15 @@ class AgentScheduler:
         ]
         self._last_run = {label: 0.0 for label, _, _, _ in self._schedule}
 
+        # Register all monitored agents with the heartbeat at startup.
+        # System agents (heartbeat, sys_monitor) are not monitored by heartbeat.
+        self._heartbeat = next(
+            inst for lbl, inst, _, _ in self._schedule if lbl == "heartbeat"
+        )
+        for label, _agent, interval, _method in self._schedule:
+            if label not in ("heartbeat", "sys_monitor"):
+                self._heartbeat.register(label, expected_freq_s=float(interval))
+
     def tick(self):
         """Run all agents whose interval has elapsed since their last call."""
         now = time.monotonic()
@@ -153,6 +232,9 @@ class AgentScheduler:
             if now - self._last_run[label] >= interval:
                 try:
                     getattr(agent, method)()
+                    # Ping heartbeat on successful execution so liveness is tracked
+                    if label not in ("heartbeat", "sys_monitor"):
+                        self._heartbeat.ping(label)
                 except Exception:
                     logger.exception("Agent %s (%s) failed", label, method)
                 self._last_run[label] = now
@@ -166,6 +248,20 @@ def _should_run_nightly(last_nightly_date):
     """Return True if today's nightly cycle hasn't run yet."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     return last_nightly_date != today
+
+
+def _sync_price_cache(orchestrator):
+    """Populate orchestrator._price_cache from the connector's state file.
+
+    The connector writes feeds/polymarket_prices.json every 300s.  Strategies
+    that poll feed:price_update from the bus ack those events before the
+    orchestrator can see them (global-ack bus model).  Reading from disk
+    guarantees the orchestrator always has the latest prices regardless of
+    bus ack order, so filter 0 (data_quality) passes when price data exists.
+    """
+    raw = orchestrator.store.read_json("feeds/polymarket_prices.json") or {}
+    for market_id, payload in raw.items():
+        orchestrator._price_cache[market_id] = payload
 
 
 def _last_nightly_date(orchestrator):
@@ -198,6 +294,9 @@ def main():
 
     logger.info("Starting POLY_FACTORY orchestrator | mode=%s | base=%s", args.mode, BASE_PATH)
 
+    # Ensure all strategy accounts and registry entries exist before the main loop
+    _bootstrap_strategies(BASE_PATH)
+
     orchestrator = PolyFactoryOrchestrator(base_path=BASE_PATH)
     scheduler = AgentScheduler(base_path=BASE_PATH)
 
@@ -206,9 +305,12 @@ def main():
     while not _shutdown:
         loop_start = time.monotonic()
 
-        # 1. Orchestrator: consume bus events (trade:signals, risk, feed:price_update cache)
-        #    Runs first so it captures fresh feed:price_update events before C2 agents
-        #    overwrite them via state-file reads.
+        # 1. Sync orchestrator price cache from the connector's state file so that
+        #    filter 0 (data_quality) always has current prices regardless of which
+        #    consumer acked the feed:price_update bus events.
+        _sync_price_cache(orchestrator)
+
+        # 2. Orchestrator: consume bus events (trade:signals, risk, resolutions)
         try:
             actions = orchestrator.run_once()
             if actions:
@@ -216,13 +318,13 @@ def main():
         except Exception:
             logger.exception("orchestrator.run_once failed — continuing.")
 
-        # 2. Agent scheduler: feeds → C2 → strategies → execution → system
+        # 3. Agent scheduler: feeds → C2 → strategies → execution → system
         try:
             scheduler.tick()
         except Exception:
             logger.exception("scheduler.tick failed — continuing.")
 
-        # 3. Nightly cycle (once per UTC day at midnight)
+        # 4. Nightly cycle (once per UTC day at midnight)
         if _should_run_nightly(nightly_ran_today):
             now_utc = datetime.now(timezone.utc)
             if now_utc.hour == 0:
@@ -233,7 +335,7 @@ def main():
                 except Exception:
                     logger.exception("run_nightly failed.")
 
-        # 4. Sleep for remainder of interval
+        # 5. Sleep for remainder of interval
         elapsed = time.monotonic() - loop_start
         sleep_s = max(0.0, POLL_INTERVAL_S - elapsed)
         if sleep_s > 0:

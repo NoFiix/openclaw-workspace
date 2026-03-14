@@ -289,9 +289,18 @@ class PolyFactoryOrchestrator:
         else:  # BUY_YES_AND_NO
             selected_price = (yes_ask + no_ask) / 2.0
 
-        validated_size = self.kelly_sizer.compute(confidence, selected_price, current_capital)
-        if validated_size <= 0:
-            return _reject("sizing", "no_kelly_edge")
+        if signal_type == "bundle_arb":
+            # Bundle arbitrage is a near-guaranteed profit (buy YES+NO below 1.0).
+            # The Kelly formula assumes a binary uncertain bet; it is not applicable here.
+            # Use the signal's suggested size, capped at the per-position hard limit (3%).
+            suggested = float(signal_payload.get("suggested_size_eur", 30.0))
+            validated_size = min(suggested, current_capital * 0.03)
+            if validated_size <= 0:
+                return _reject("sizing", "no_capital")
+        else:
+            validated_size = self.kelly_sizer.compute(confidence, selected_price, current_capital)
+            if validated_size <= 0:
+                return _reject("sizing", "no_kelly_edge")
         filters_passed.append("sizing")
 
         # ------ Filter 4: kill_switch ------
