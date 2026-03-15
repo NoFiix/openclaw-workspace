@@ -1,6 +1,6 @@
 # 00_index.md — Full Platform Audit 2026-03-15
 
-**Status** : `DISCOVERY_DONE` (Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4 + Phase 5 complete)
+**Status** : `DISCOVERY_DONE` (Audit complet — Phases 0 à 6 terminées)
 **Date** : 2026-03-15
 **Auditeur** : Claude Code (claude-sonnet-4-6)
 **Scope** : Environnement global OpenClaw (VPS srv1425899)
@@ -26,7 +26,7 @@ Trois systèmes coexistent : Content Factory (scraping/publication), Trading Fac
 | Phase 3 — Trading Factory | DISCOVERY_DONE | `03_trading_factory/*` (8 fichiers) |
 | Phase 4 — POLY_FACTORY | DISCOVERY_DONE | `04_poly_factory/*` (8 fichiers) |
 | Phase 5 — Composants partagés | DISCOVERY_DONE | `05_shared_components/*` (7 fichiers) |
-| Phase 6 — Analyse cross-system | TODO | `06_cross_system_analysis/` |
+| Phase 6 — Analyse cross-system | DISCOVERY_DONE | `06_cross_system_analysis/*` (9 fichiers) |
 
 ---
 
@@ -128,6 +128,17 @@ Trois systèmes coexistent : Content Factory (scraping/publication), Trading Fac
 - `shared_scripts.md` — 9 scripts Content Factory (3 actifs, 4 modules, 2 dormants)
 - `infrastructure_security.md` — réseau, secrets, disque, backups, SPOFs, permissions
 - `shared_architecture.md` — architecture transverse, interactions, observabilité, top 10 risques
+
+### Phase 6 — `06_cross_system_analysis/`
+- `dependency_map.md` — cartographie dépendances inter-systèmes, schéma ASCII, chaînes de défaillance
+- `shared_artifacts.md` — fichiers state, variables env, scripts, topics bus partagés
+- `file_ownership.md` — propriété dossiers, writers/readers, nettoyage automatique
+- `trigger_matrix.md` — 55+ triggers (cron, PM2, pollers, scheduler, bus), orphelins, séquences temporelles
+- `collision_risks.md` — collisions fichiers, variables, réseau, temporelles
+- `integration_rules.md` — checklist 11 points pour nouveaux systèmes, retour POLY_FACTORY, conventions
+- `refactor_priorities.md` — 33 actions priorisées P0→P4
+- `global_synthesis.md` — état actuel, top 10 risques, top 5 quick wins, carte ASCII, recommandation stratégique
+- `target_architecture.md` — architecture cible, namespaces bus/state, conventions scheduler/watchdog/dashboard
 
 ### Appendices — `99_appendices/`
 - `pm2_status.txt`

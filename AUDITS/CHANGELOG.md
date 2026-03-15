@@ -1,5 +1,15 @@
 # CHANGELOG — Audits OpenClaw
 
+## 2026-03-15 — Full Platform Audit — COMPLET (Phase 6 Cross-System Analysis)
+
+**Statut** : `DISCOVERY_DONE` — Audit global terminé (6 phases, 42 fichiers)
+
+- **Phase 6** : analyse cross-system complète (9 fichiers dans `06_cross_system_analysis/`)
+- **Dépendances cartographiées** : 3 systèmes largement indépendants, couplage principal = POLY_TRADING_PUBLISHER (JS lit POLY state) + GLOBAL_TOKEN_TRACKER (JS lit POLY token_costs)
+- **Découverte critique** : les 4 Telegram CHAT_ID pointent vers le **même canal** — 14 émetteurs dans 1 chat, alertes CRIT noyées
+- **33 actions priorisées** : 3 P0 (secrets + firewall), 8 P1 (quick wins), 10 P2 (robustesse), 6 P3 (architecture), 6 P4 (futur)
+- **Architecture cible définie** : namespaces bus/state, conventions scheduler/watchdog/dashboard, checklist intégration 11 points, retour d'expérience POLY_FACTORY (7 problèmes documentés)
+
 ## 2026-03-15 — Full Platform Audit — Phase 5 Shared Components
 
 - **Phase 5** : audit complet des composants partagés et transverses (7 fichiers dans `05_shared_components/`)
