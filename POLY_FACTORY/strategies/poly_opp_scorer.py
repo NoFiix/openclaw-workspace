@@ -14,7 +14,7 @@ Strategy logic:
      Polymarket YES ask.
   4. Emit BUY_YES when:
        - ambiguity_score < MAX_AMBIGUITY_SCORE (reject ambiguous criteria)
-       - LLM probability >= MIN_LLM_PROBABILITY (0.85 — high-confidence YES)
+       - LLM probability >= MIN_LLM_PROBABILITY (0.75 — high-confidence YES)
        - edge (LLM_prob − yes_ask) > EDGE_THRESHOLD (0.05 — market mispriced)
 
 LLM cost control:
@@ -47,7 +47,7 @@ PLATFORM    = "polymarket"
 
 # Strategy parameters
 EDGE_THRESHOLD       = 0.05    # min (llm_prob - yes_ask) to emit a signal
-MIN_LLM_PROBABILITY  = 0.85    # minimum LLM-estimated probability for BUY_YES
+MIN_LLM_PROBABILITY  = 0.75    # minimum LLM-estimated probability for BUY_YES
 MAX_AMBIGUITY_SCORE  = 3       # reject markets with ambiguity_score >= this
 CACHE_TTL_SECONDS    = 14_400  # 4 hours — max LLM call frequency per market
 SUGGESTED_SIZE_EUR   = 25.0

@@ -3,14 +3,14 @@ POLY_NO_SCANNER — LLM-powered high-probability NO opportunity scanner.
 
 Uses Claude Haiku to estimate the probability that a Polymarket binary market
 resolves YES, based on the market's boolean resolution condition.  Signals BUY_NO
-when the market strongly believes the event will NOT resolve YES (no_ask ≥ 90 cents)
-AND Haiku confirms P(NO) ≥ 90% with meaningful edge.
+when the market strongly believes the event will NOT resolve YES (no_ask ≥ 80 cents)
+AND Haiku confirms P(NO) ≥ 80% with meaningful edge.
 
 Key differences from POLY_OPP_SCORER:
   - Direction: BUY_NO (not BUY_YES)
   - LLM: Claude Haiku (cheaper) instead of Sonnet
   - Cache: permanent (no TTL) — each market is scored exactly once, ever
-  - Screen: no_ask ≥ MIN_NO_ASK (90 cents) instead of YES ask threshold
+  - Screen: no_ask ≥ MIN_NO_ASK (80 cents) instead of YES ask threshold
 
 Strategy logic:
   1. Receive feed:price_update — track no_ask per market.
@@ -46,9 +46,9 @@ ACCOUNT_ID             = "ACC_POLY_NO_SCANNER"
 PLATFORM               = "polymarket"
 
 # Strategy parameters
-MIN_NO_ASK             = 0.90    # screen: NO must cost ≥ 90 cents (YES very cheap)
+MIN_NO_ASK             = 0.80    # screen: NO must cost ≥ 80 cents (YES cheap)
 EDGE_THRESHOLD         = 0.03    # min (prob_no - no_ask) to emit a signal
-MIN_LLM_PROBABILITY_NO = 0.90    # Haiku must estimate P(NO) ≥ 90%
+MIN_LLM_PROBABILITY_NO = 0.80    # Haiku must estimate P(NO) ≥ 80%
 MAX_AMBIGUITY_SCORE    = 3       # reject markets with ambiguity_score >= this
 SUGGESTED_SIZE_EUR     = 20.0    # smaller size — conservative NO bet
 LLM_MODEL              = "claude-haiku-4-5-20251001"

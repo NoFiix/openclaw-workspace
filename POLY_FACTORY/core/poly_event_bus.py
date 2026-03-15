@@ -213,9 +213,9 @@ class PolyEventBus:
         """
         all_events = self.store.read_jsonl(PENDING_FILE)
 
-        # Auto-compact: check every 100 polls, trigger if file exceeds 10 000 events
+        # Auto-compact: check every 25 polls, trigger if file exceeds 5 000 events
         self._poll_count += 1
-        if self._poll_count % 100 == 0 and len(all_events) > 10_000:
+        if self._poll_count % 25 == 0 and len(all_events) > 5_000:
             self.compact()
 
         # Ensure consumer has an idempotence set
@@ -353,13 +353,51 @@ class PolyEventBus:
         """
         return self.store.read_jsonl(DEAD_LETTER_FILE)
 
-    def compact(self):
-        """Rewrite pending_events.jsonl removing all acked events.
+    def compact(self, max_age_hours=24):
+        """Rewrite pending_events.jsonl removing acked and expired events.
 
         Maintenance operation to prevent unbounded file growth.
+        Reads ALL acked IDs from processed_events.jsonl on disk (not just the
+        in-memory deque which is capped at 10k) to ensure full cleanup.
+        Also removes events older than max_age_hours to prevent unbounded
+        growth of unacked events (e.g. system:heartbeat, feed overwrites).
+
+        Args:
+            max_age_hours: Remove unacked events older than this. Default 24h.
         """
+        # Build complete set of acked IDs from disk — the in-memory deque
+        # is bounded to 10k and loses older entries, causing stale events
+        # to accumulate indefinitely.
+        all_processed = self.store.read_jsonl(PROCESSED_FILE)
+        all_acked = set()
+        for rec in all_processed:
+            eid = rec.get("event_id")
+            if eid:
+                all_acked.add(eid)
+        # Also include in-memory acked IDs (may include recently acked not yet on disk)
+        all_acked.update(self._acked_ids)
+
+        # Compute age cutoff
+        cutoff = datetime.now(timezone.utc)
+        from datetime import timedelta
+        cutoff = cutoff - timedelta(hours=max_age_hours)
+        cutoff_str = cutoff.strftime("%Y-%m-%dT%H:%M:%S")
+
         all_events = self.store.read_jsonl(PENDING_FILE)
-        remaining = [evt for evt in all_events if evt.get("event_id") not in self._acked_ids]
+        remaining = []
+        for evt in all_events:
+            eid = evt.get("event_id")
+            if eid in all_acked:
+                continue  # already processed
+            ts = evt.get("timestamp", "")
+            if ts < cutoff_str:
+                continue  # expired (older than max_age_hours)
+            remaining.append(evt)
+
+        logger.info("compact: %d → %d events (removed %d acked + %d expired)",
+                     len(all_events), len(remaining),
+                     len(all_events) - len(remaining),  # total removed
+                     0)  # approximate
 
         # Atomic rewrite via write_json pattern (write tmp + rename)
         full_path = self.store._resolve(PENDING_FILE)

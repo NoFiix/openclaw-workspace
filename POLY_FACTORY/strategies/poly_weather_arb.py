@@ -20,7 +20,7 @@ ACCOUNT_ID = "ACC_POLY_WEATHER_ARB"
 PLATFORM = "polymarket"
 
 # Strategy parameters
-EDGE_THRESHOLD = 0.15       # min (noaa_confidence - yes_ask) to emit a signal
+EDGE_THRESHOLD = 0.08       # min (noaa_confidence - yes_ask) to emit a signal
 MIN_NOAA_CONFIDENCE = 0.70  # ignore low-confidence forecasts
 SUGGESTED_SIZE_EUR = 25.0   # suggested order size before Kelly sizing
 

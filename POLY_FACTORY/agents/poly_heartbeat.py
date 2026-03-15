@@ -9,6 +9,7 @@ Frequency: every 30 min (scheduled by caller).
 The restart_fn is injectable so no real PM2/OS calls are made in tests.
 """
 
+import logging
 from datetime import datetime, timezone
 
 from core.poly_audit_log import PolyAuditLog
@@ -16,10 +17,12 @@ from core.poly_data_store import PolyDataStore
 from core.poly_event_bus import PolyEventBus
 
 
+logger = logging.getLogger("POLY_HEARTBEAT")
+
 PRODUCER = "POLY_HEARTBEAT"
 STATE_FILE = "orchestrator/heartbeat_state.json"
 STALE_MULTIPLIER = 2   # elapsed > 2 × expected_freq_s → stale
-MAX_RESTARTS = 3       # disable agent after this many restart attempts
+MAX_RESTARTS = 10      # disable agent after this many restart attempts
 
 
 class PolyHeartbeat:
@@ -70,9 +73,13 @@ class PolyHeartbeat:
         now = self._now_utc()
         agent = self._state["agents"][agent_name]
         agent["last_seen"] = now
-        # Revive: if it was stale-but-not-disabled, ping resets it to active
-        if agent["status"] != "disabled":
-            agent["status"] = "active"
+        # Revive: a successful ping proves the agent is alive — reset to active
+        # even if previously disabled (the underlying issue has resolved)
+        if agent["status"] == "disabled":
+            logger.info("Agent %s revived by successful ping (was disabled, restart_count=%d)",
+                        agent_name, agent.get("restart_count", 0))
+        agent["status"] = "active"
+        agent["restart_count"] = 0
         self._save_state()
 
         self.bus.publish(
