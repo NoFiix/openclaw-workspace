@@ -1,6 +1,6 @@
 # 00_index.md — Full Platform Audit 2026-03-15
 
-**Status** : `DISCOVERY_DONE` (Phase 0 + Phase 1 complete)
+**Status** : `DISCOVERY_DONE` (Phase 0 + Phase 1 + Phase 2 complete)
 **Date** : 2026-03-15
 **Auditeur** : Claude Code (claude-sonnet-4-6)
 **Scope** : Environnement global OpenClaw (VPS srv1425899)
@@ -22,7 +22,7 @@ Trois systèmes coexistent : Content Factory (scraping/publication), Trading Fac
 |-------|--------|----------|
 | Phase 0 — Structure + snapshots | DONE | `README.md`, `CHANGELOG.md`, `00_index.md`, `99_appendices/*` |
 | Phase 1 — Environnement global | DONE | `01_global_environment/*` (5 fichiers) |
-| Phase 2 — Content Factory | TODO | `02_content_factory/` |
+| Phase 2 — Content Factory | DISCOVERY_DONE | `02_content_factory/*` (6 fichiers) |
 | Phase 3 — Trading Factory | TODO | `03_trading_factory/` |
 | Phase 4 — POLY_FACTORY | TODO | `04_poly_factory/` |
 | Phase 5 — Composants partagés | TODO | `05_shared_components/` |
@@ -37,6 +37,9 @@ Trois systèmes coexistent : Content Factory (scraping/publication), Trading Fac
 | C-01 | `poly-orchestrator` à 98% CPU | HIGH | Boucle polling 2s sans sleep efficace quand le tick prend ~0ms. Voir `01_global_environment/process_map.md` |
 | C-02 | Double lancement `trading/poller.js` | MEDIUM | Lancé par `@reboot` cron ET par PM2 `trading-poller`. Risque de duplication de données. Voir `01_global_environment/process_map.md` |
 | C-03 | Deux systèmes de trading indépendants | MEDIUM | TRADING_FACTORY (JS) et POLY_FACTORY (Python) avec state dirs séparés, pas de coordination. Voir `01_global_environment/filesystem_map.md` |
+| C-04 | hourly_scraper vs scraper : dedup non partagée | LOW | Deux mécanismes de dedup différents sur les mêmes RSS feeds. Voir `02_content_factory/triggers_cron.md` |
+| C-05 | Noms confusants : poller.js × 2 | LOW | Content poller et trading poller même nom, chemins différents. Voir `02_content_factory/triggers_cron.md` |
+| C-06 | Content poller log dans container Docker | MEDIUM | Log perdu si container recréé. Voir `02_content_factory/triggers_cron.md` |
 
 ---
 
@@ -48,6 +51,10 @@ Trois systèmes coexistent : Content Factory (scraping/publication), Trading Fac
 | U-02 | `WALLET_PRIVATE_KEY` absent du `.env` POLY_FACTORY | TYPE_1 — `place_order()` crash si appelé |
 | U-03 | Monitoring/alerting externe : aucun système détecté | TYPE_2 — pannes silencieuses |
 | U-04 | Backup strategy : aucune politique visible | TYPE_2 — risque de perte de données |
+| U-05 | Content poller : pas de supervision PM2, crash silencieux possible | TYPE_2 — pipeline publication bloqué |
+| U-06 | Token tracking LLM content : coûts invisibles | TYPE_2 — budget non monitoré |
+| U-07 | youtube_analyzer.js : déclencheur exact inconnu | TYPE_3 — pas dans le crontab |
+| U-08 | SYSTEM_WATCHDOG : monitore-t-il le content poller ? | TYPE_2 — détection panne incertaine |
 
 ---
 
@@ -64,6 +71,14 @@ Trois systèmes coexistent : Content Factory (scraping/publication), Trading Fac
 - `integrations_externes.md` — services externes
 - `filesystem_map.md` — carte du filesystem
 - `unknowns_and_gaps.md` — inconnues et lacunes
+
+### Phase 2 — `02_content_factory/`
+- `summary.md` — mission, statut, points de fragilité
+- `agents.md` — inventaire des 16 agents (6 content actifs, 5 trading dormants, 5 infra)
+- `pipeline_flows.md` — flux horaire + quotidien, ordre d'exécution, points de blocage
+- `triggers_cron.md` — 3 cron jobs, scripts, logs, conflits
+- `risks.md` — 11 risques identifiés (0 critique, 2 élevé, 6 moyen, 3 faible)
+- `recommendations.md` — 11 recommandations (2 P1, 3 P2, 4 P3, 2 P4)
 
 ### Appendices — `99_appendices/`
 - `pm2_status.txt`
