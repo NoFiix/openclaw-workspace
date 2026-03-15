@@ -137,18 +137,18 @@ def test_buy_no_signal_when_no_ask_high_and_llm_confirms(scanner_and_bus):
 
 
 def test_no_signal_when_no_ask_below_min(scanner_and_bus):
-    """no_ask=0.85 < MIN_NO_ASK=0.90 → no signal."""
+    """no_ask=0.75 < MIN_NO_ASK=0.80 → no signal."""
     s, bus = scanner_and_bus
-    _publish_price(bus, "0xAAA", no_ask=0.85)
+    _publish_price(bus, "0xAAA", no_ask=0.75)
     _publish_resolution(bus, "0xAAA")
     signals = s.run_once()
     assert signals == []
 
 
 def test_no_signal_when_llm_prob_no_below_min(scanner_and_bus):
-    """LLM P(YES)=0.15, P(NO)=0.85 < MIN_LLM_PROBABILITY_NO=0.90 → no signal."""
+    """LLM P(YES)=0.25, P(NO)=0.75 < MIN_LLM_PROBABILITY_NO=0.80 → no signal."""
     s, bus = scanner_and_bus
-    s._llm_client = MockLLMClient(probability=0.15)
+    s._llm_client = MockLLMClient(probability=0.25)
     _publish_price(bus, "0xAAA", no_ask=0.91)
     _publish_resolution(bus, "0xAAA")
     signals = s.run_once()

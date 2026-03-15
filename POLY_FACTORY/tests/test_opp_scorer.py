@@ -136,7 +136,7 @@ def test_buy_yes_signal_when_llm_prob_high(scorer_and_bus):
 
 def test_no_signal_when_llm_prob_below_min(scorer_and_bus):
     s, bus = scorer_and_bus
-    s._llm_client = MockLLMClient(probability=0.80)  # below MIN_LLM_PROBABILITY=0.85
+    s._llm_client = MockLLMClient(probability=0.70)  # below MIN_LLM_PROBABILITY=0.75
     _publish_price(bus, "0xAAA", yes_ask=0.55)
     _publish_resolution(bus, "0xAAA")
     signals = s.run_once()
@@ -499,10 +499,10 @@ def test_multiple_markets_only_one_signals(tmp_path):
     now = time.time()
     # Pre-seed LLM cache so probabilities are deterministic regardless of set iteration order
     s._llm_cache["0xAAA"] = {"probability": 0.92, "reasoning": "high", "timestamp": now}
-    s._llm_cache["0xBBB"] = {"probability": 0.80, "reasoning": "low",  "timestamp": now}
+    s._llm_cache["0xBBB"] = {"probability": 0.70, "reasoning": "low",  "timestamp": now}
 
     _publish_price(bus, "0xAAA", yes_ask=0.55)  # edge = 0.92 - 0.55 = 0.37 → signal
-    _publish_price(bus, "0xBBB", yes_ask=0.55)  # prob 0.80 < MIN_LLM_PROBABILITY → no signal
+    _publish_price(bus, "0xBBB", yes_ask=0.55)  # prob 0.70 < MIN_LLM_PROBABILITY → no signal
     _publish_resolution(bus, "0xAAA")
     _publish_resolution(bus, "0xBBB")
 

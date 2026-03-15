@@ -128,8 +128,8 @@ def test_no_signal_when_bucket_price_high(scanner):
 
 def test_no_signal_when_edge_below_threshold(scanner):
     """Edge < EDGE_THRESHOLD → no signal (strictly greater than required)."""
-    # yes_ask=0.76, confidence=0.90 → edge=0.14 < 0.15 → no signal
-    _publish_price(scanner, yes_ask=0.76)
+    # yes_ask=0.83, confidence=0.90 → edge=0.07 < 0.08 → no signal
+    _publish_price(scanner, yes_ask=0.83)
     _publish_noaa(scanner, temp_f=82, confidence=0.90)
     signals = scanner.run_once()
     assert len(signals) == 0
