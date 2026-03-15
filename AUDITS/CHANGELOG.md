@@ -1,5 +1,20 @@
 # CHANGELOG — Audits OpenClaw
 
+## 2026-03-15 — Full Platform Audit — Phase 4 POLY_FACTORY
+
+- **Phase 4** : audit complet de POLY_FACTORY Python (8 fichiers dans `04_poly_factory/`)
+- **Composants audités** : 46 (6 core, 5 feeds, 5 analysis, 9 strategies, 4 execution, 6 risk, 7 evaluation, 3 system, 3 connectors)
+- **Bus topics** : 20 topics Python, 6 orphelins (dont `news:high_impact` sans producteur)
+- **Bus saturation** : 70k events pending vs 22k processed (19 Mo), compaction insuffisante
+- **Agents disabled** : 11 sur 19 (exec_router, binance_feed, msa, binance_sig, wallet_feed, wallet_tracker, data_validator, arb_scanner, latency_arb, brownian, pair_cost)
+- **Trades** : **0 trades en 1.5 jours** — aucune stratégie n'a émis de `trade:signal`
+- **CPU** : poly-orchestrator à **98%** (single-threaded + bus I/O thrashing)
+- **Risques identifiés** : 21 (1 critique, 5 élevé, 6 moyen, 5 faible)
+- **Recommandations** : 19 (3 P0, 4 P1, 5 P2, 3 P3, 4 P4)
+- **Nouveaux conflits** : 3 (C-10 agents disabled, C-11 bus backlog/CPU, C-12 news_strat zombie)
+- **Nouvelles inconnues** : 4 (U-12 à U-15)
+- **Point critique** : exec_router DISABLED → pipeline structurellement mort, aucun trade ne peut être exécuté même si un signal passait les 7 filtres
+
 ## 2026-03-15 — Full Platform Audit — Phase 3 Trading Factory
 
 - **Phase 3** : audit complet de la Trading Factory JS (8 fichiers dans `03_trading_factory/`)
@@ -28,3 +43,13 @@
 - **Appendices** : 7 snapshots bruts dans `99_appendices/`
 - **Conflits détectés** : 3 (voir `00_index.md`)
 - **Inconnues majeures** : 4 (voir `01_global_environment/unknowns_and_gaps.md`)
+
+### Fix 2026-03-15 — Conflit C-02 résolu
+- trading-poller retiré de PM2
+- Poller trading relancé dans Docker container
+- KILL_SWITCH_GUARDIAN et POLY_TRADING_PUBLISHER ont maintenant accès aux variables Telegram
+
+### Fixes 2026-03-15
+**C-02 résolu** — trading-poller retiré de PM2, relancé dans Docker
+**R-01 découvert** — content poller était mort (Terminated), relancé manuellement
+**Action requise** — les deux pollers doivent être supervisés pour éviter les crashs silencieux

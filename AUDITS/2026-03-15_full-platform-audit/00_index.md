@@ -1,6 +1,6 @@
 # 00_index.md — Full Platform Audit 2026-03-15
 
-**Status** : `DISCOVERY_DONE` (Phase 0 + Phase 1 + Phase 2 + Phase 3 complete)
+**Status** : `DISCOVERY_DONE` (Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4 complete)
 **Date** : 2026-03-15
 **Auditeur** : Claude Code (claude-sonnet-4-6)
 **Scope** : Environnement global OpenClaw (VPS srv1425899)
@@ -24,7 +24,7 @@ Trois systèmes coexistent : Content Factory (scraping/publication), Trading Fac
 | Phase 1 — Environnement global | DONE | `01_global_environment/*` (5 fichiers) |
 | Phase 2 — Content Factory | DISCOVERY_DONE | `02_content_factory/*` (6 fichiers) |
 | Phase 3 — Trading Factory | DISCOVERY_DONE | `03_trading_factory/*` (8 fichiers) |
-| Phase 4 — POLY_FACTORY | TODO | `04_poly_factory/` |
+| Phase 4 — POLY_FACTORY | DISCOVERY_DONE | `04_poly_factory/*` (8 fichiers) |
 | Phase 5 — Composants partagés | TODO | `05_shared_components/` |
 | Phase 6 — Analyse cross-system | TODO | `06_cross_system_analysis/` |
 
@@ -43,6 +43,9 @@ Trois systèmes coexistent : Content Factory (scraping/publication), Trading Fac
 | C-07 | KILL_SWITCH_GUARDIAN défaillant (27k erreurs) | CRITICAL | Agent de sécurité critique avec 115% taux d'erreur. Kill switch jamais trippé malgré des conditions potentielles. Voir `03_trading_factory/risks.md` R-01 |
 | C-08 | Double cleanup bus_cleanup_trading.js | LOW | Même script exécuté 2× par jour (02:00 + 03:30). Idempotent mais confusant. Voir `03_trading_factory/triggers_cron.md` |
 | C-09 | Human approval gate non fonctionnel | HIGH | 95 ordres HUMAN_APPROVAL_REQUIRED → tous EXPIRED (TTL 600s). Aucun mécanisme d'approbation. Voir `03_trading_factory/risks.md` R-03 |
+| C-10 | 11 agents POLY_FACTORY disabled — pipeline mort | CRITICAL | exec_router + binance_feed + msa disabled → 0 trades possibles. Cascade: MAX_RESTARTS=3 trop agressif. Voir `04_poly_factory/risks.md` R-01 |
+| C-11 | Bus Python backlog 70k events — CPU 98% | HIGH | pending_events.jsonl 19 Mo, single-file I/O à chaque tick (2s). Compaction insuffisante. Voir `04_poly_factory/risks.md` R-02/R-03 |
+| C-12 | news:high_impact sans producteur — news_strat zombie | MEDIUM | Aucun agent POLY ne produit ce topic. Bridge JS→Python non implémenté. Voir `04_poly_factory/risks.md` R-05 |
 
 ---
 
@@ -61,6 +64,10 @@ Trois systèmes coexistent : Content Factory (scraping/publication), Trading Fac
 | U-09 | Cause exacte des 27 399 erreurs KILL_SWITCH_GUARDIAN | TYPE_1 — sécurité capitale non fonctionnelle |
 | U-10 | PREDICTOR : consommateur prévu ? Fonctionnalité intentionnellement orpheline ? | TYPE_3 — gaspillage ressources si orphelin |
 | U-11 | Transition testnet → mainnet : plan de migration ? | TYPE_2 — pas d'executor mainnet, pas de plan documenté |
+| U-12 | Cause racine des 11 agents POLY disabled (API timeout ? import error ? state manquant ?) | TYPE_1 — pipeline mort tant que non diagnostiqué |
+| U-13 | Pourquoi 0 trade:signal en 1.5 jours (seuils trop stricts ? marchés inadaptés ? données incomplètes ?) | TYPE_1 — impossible d'évaluer le système |
+| U-14 | news:high_impact producteur manquant — bridge JS→Python prévu mais non implémenté | TYPE_2 — news_strat définitivement zombie |
+| U-15 | Credentials Polymarket (POLY_API_KEY, POLY_SECRET) : jamais testés sur CLOB API réel | TYPE_1 — possiblement expirés ou invalides |
 
 ---
 
@@ -95,6 +102,16 @@ Trois systèmes coexistent : Content Factory (scraping/publication), Trading Fac
 - `risks.md` — 21 risques (1 critique, 4 élevé, 7 moyen, 6 faible) en 4 sections
 - `recommendations.md` — 17 recommandations (3 P0, 4 P1, 4 P2, 3 P3, 3 P4)
 - `trading_system_map.md` — diagramme global, composants CORE, checklist troubleshooting
+
+### Phase 4 — `04_poly_factory/`
+- `summary.md` — mission, mode paper, 9 stratégies (0 trades, 0€ PnL), capital, APIs, LLM costs, top 5
+- `agents.md` — 46 composants (6 core, 5 feeds, 5 analysis, 9 strategies, 4 exec, 6 risk, 7 eval, 3 system, 3 connectors)
+- `bus_events.md` — 20 topics Python, 6 orphelins, flux ASCII, saturation 70k, comparaison JS vs Python
+- `pipeline_flows.md` — pipeline feeds→7 filtres→exécution, 6 blocages, latences, paper vs live
+- `scheduler.md` — 21 agents avec intervalles, tick() séquentiel, CPU 98%, comparaison Python vs JS
+- `risks.md` — 21 risques (1 critique, 5 élevé, 6 moyen, 5 faible) en 5 sections
+- `recommendations.md` — 19 recommandations (3 P0, 4 P1, 5 P2, 3 P3, 4 P4)
+- `poly_system_map.md` — diagramme global, composants CORE, checklist troubleshooting
 
 ### Appendices — `99_appendices/`
 - `pm2_status.txt`
