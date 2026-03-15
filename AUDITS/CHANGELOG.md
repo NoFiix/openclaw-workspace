@@ -1,5 +1,18 @@
 # CHANGELOG — Audits OpenClaw
 
+## 2026-03-15 — Full Platform Audit — Phase 5 Shared Components
+
+- **Phase 5** : audit complet des composants partagés et transverses (7 fichiers dans `05_shared_components/`)
+- **SYSTEM_WATCHDOG** : couvre 80% du système (21 agents trading, content, POLY, infra) mais n'est pas lui-même supervisé — SPOF critique
+- **Token monitoring** : Trading tracké ✅, POLY partiellement (fichier vide), Content Factory **non tracké** (~30% des coûts LLM invisibles)
+- **Telegram** : 4 bots, 14 fichiers émetteurs, canal TRADER surchargé (8 agents), aucun fallback
+- **Dashboard** : Express.js 17 endpoints + React 8 pages, auth x-api-key, **HTTP sans TLS** (API key en clair)
+- **Content scripts** : 9 scripts JS (3 actifs, 4 modules, 2 dormants), cleanup.js non schedulé, router.js orphelin
+- **Infrastructure** : POLY_FACTORY/.env **world-readable (664)** avec wallet private key, ports Docker exposés sans firewall, pas de UFW, backups stales (12j)
+- **Nouveaux conflits** : 4 (C-13 .env perms, C-14 HTTP sans TLS, C-15 watchdog SPOF, C-16 backups stales)
+- **Nouvelles inconnues** : 3 (U-16 à U-18)
+- **Points critiques** : .env 664 avec clés privées (P0 immédiat), pas de firewall (P0), HTTPS manquant (P1), backups (P1)
+
 ## 2026-03-15 — Full Platform Audit — Phase 4 POLY_FACTORY
 
 - **Phase 4** : audit complet de POLY_FACTORY Python (8 fichiers dans `04_poly_factory/`)

@@ -1,6 +1,6 @@
 # 00_index.md — Full Platform Audit 2026-03-15
 
-**Status** : `DISCOVERY_DONE` (Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4 complete)
+**Status** : `DISCOVERY_DONE` (Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4 + Phase 5 complete)
 **Date** : 2026-03-15
 **Auditeur** : Claude Code (claude-sonnet-4-6)
 **Scope** : Environnement global OpenClaw (VPS srv1425899)
@@ -25,7 +25,7 @@ Trois systèmes coexistent : Content Factory (scraping/publication), Trading Fac
 | Phase 2 — Content Factory | DISCOVERY_DONE | `02_content_factory/*` (6 fichiers) |
 | Phase 3 — Trading Factory | DISCOVERY_DONE | `03_trading_factory/*` (8 fichiers) |
 | Phase 4 — POLY_FACTORY | DISCOVERY_DONE | `04_poly_factory/*` (8 fichiers) |
-| Phase 5 — Composants partagés | TODO | `05_shared_components/` |
+| Phase 5 — Composants partagés | DISCOVERY_DONE | `05_shared_components/*` (7 fichiers) |
 | Phase 6 — Analyse cross-system | TODO | `06_cross_system_analysis/` |
 
 ---
@@ -46,6 +46,10 @@ Trois systèmes coexistent : Content Factory (scraping/publication), Trading Fac
 | C-10 | 11 agents POLY_FACTORY disabled — pipeline mort | CRITICAL | exec_router + binance_feed + msa disabled → 0 trades possibles. Cascade: MAX_RESTARTS=3 trop agressif. Voir `04_poly_factory/risks.md` R-01 |
 | C-11 | Bus Python backlog 70k events — CPU 98% | HIGH | pending_events.jsonl 19 Mo, single-file I/O à chaque tick (2s). Compaction insuffisante. Voir `04_poly_factory/risks.md` R-02/R-03 |
 | C-12 | news:high_impact sans producteur — news_strat zombie | MEDIUM | Aucun agent POLY ne produit ce topic. Bridge JS→Python non implémenté. Voir `04_poly_factory/risks.md` R-05 |
+| C-13 | POLY_FACTORY/.env world-readable (664) avec clés privées | CRITICAL | Wallet private key, API keys en plaintext lisibles par tous les users locaux. Voir `05_shared_components/infrastructure_security.md` R-01 |
+| C-14 | Dashboard HTTP sans TLS — API key en clair | HIGH | nginx écoute sur port 80, x-api-key interceptable. Voir `05_shared_components/dashboard.md` R-01 |
+| C-15 | SYSTEM_WATCHDOG non supervisé — SPOF monitoring | HIGH | Si le watchdog tombe, aucune alerte n'est émise. Voir `05_shared_components/watchdog.md` SPOF |
+| C-16 | Backups stales (12j) et locaux (même disque) | HIGH | RPO 12+ jours, pas d'offsite, state/ non sauvegardé. Voir `05_shared_components/infrastructure_security.md` R-05 |
 
 ---
 
@@ -68,6 +72,9 @@ Trois systèmes coexistent : Content Factory (scraping/publication), Trading Fac
 | U-13 | Pourquoi 0 trade:signal en 1.5 jours (seuils trop stricts ? marchés inadaptés ? données incomplètes ?) | TYPE_1 — impossible d'évaluer le système |
 | U-14 | news:high_impact producteur manquant — bridge JS→Python prévu mais non implémenté | TYPE_2 — news_strat définitivement zombie |
 | U-15 | Credentials Polymarket (POLY_API_KEY, POLY_SECRET) : jamais testés sur CLOB API réel | TYPE_1 — possiblement expirés ou invalides |
+| U-16 | TELEGRAM_CHAT_ID et TRADER_TELEGRAM_CHAT_ID pointent-ils vers le même canal ? | TYPE_3 — confusion alertes si partagé |
+| U-17 | Container openclaw-cli-1 en état failed (exit code 1) — rôle et impact ? | TYPE_3 — possiblement non critique |
+| U-18 | Restore backup jamais testé — fonctionnel ? | TYPE_2 — RPO réel inconnu |
 
 ---
 
@@ -112,6 +119,15 @@ Trois systèmes coexistent : Content Factory (scraping/publication), Trading Fac
 - `risks.md` — 21 risques (1 critique, 5 élevé, 6 moyen, 5 faible) en 5 sections
 - `recommendations.md` — 19 recommandations (3 P0, 4 P1, 5 P2, 3 P3, 4 P4)
 - `poly_system_map.md` — diagramme global, composants CORE, checklist troubleshooting
+
+### Phase 5 — `05_shared_components/`
+- `watchdog.md` — SYSTEM_WATCHDOG : couverture, alertes, rapport 08h, SPOF (non supervisé)
+- `token_monitoring.md` — GLOBAL_TOKEN_TRACKER, ANALYST, poly_log_tokens.py, Content non tracké
+- `telegram_bots.md` — 4 bots, 14 émetteurs, canal TRADER surchargé (8 agents)
+- `dashboard.md` — Express.js 17 endpoints, React 8 pages, auth x-api-key, HTTP sans TLS
+- `shared_scripts.md` — 9 scripts Content Factory (3 actifs, 4 modules, 2 dormants)
+- `infrastructure_security.md` — réseau, secrets, disque, backups, SPOFs, permissions
+- `shared_architecture.md` — architecture transverse, interactions, observabilité, top 10 risques
 
 ### Appendices — `99_appendices/`
 - `pm2_status.txt`

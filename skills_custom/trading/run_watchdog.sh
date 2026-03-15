@@ -25,3 +25,7 @@ docker exec "$CONTAINER" sh -c "
 
 docker exec "$CONTAINER" node --experimental-vm-modules \
   "$SKILL_PATH" --input "$PAYLOAD_PATH"
+
+# Write heartbeat file on successful run (used by check_watchdog_heartbeat.sh)
+HEARTBEAT_FILE="/home/openclawadmin/openclaw/workspace/state/watchdog_heartbeat"
+date -u +%Y-%m-%dT%H:%M:%SZ > "$HEARTBEAT_FILE"
