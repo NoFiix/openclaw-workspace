@@ -155,8 +155,16 @@ class ConnectorPolymarket(PolyMarketConnector):
         Returns:
             Dict with price data matching feed:price_update payload schema.
         """
-        url = f"{self.gamma_api_url}/markets/{market_id}"
-        data = self._http_get(url)
+        url = f"{self.gamma_api_url}/markets?conditionIds={market_id}"
+        response = self._http_get(url)
+        # Real API returns a list; test mocks may return a single dict — handle both.
+        if isinstance(response, list):
+            data = response[0] if response else {}
+        elif isinstance(response, dict) and "data" in response:
+            items = response["data"]
+            data = items[0] if items else {}
+        else:
+            data = response  # single dict (e.g. test mock)
 
         return self._build_price_payload(market_id, data)
 
