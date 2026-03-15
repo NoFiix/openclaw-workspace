@@ -108,6 +108,13 @@ workspace/
 
 ---
 
+## 📋 Audits
+
+Les audits techniques de la plateforme sont dans `AUDITS/`.
+Dernier audit : `2026-03-15_full-platform-audit/` (Phase 1 complète).
+
+---
+
 ## 🛣️ Roadmap
 
 - [x] Scraper multi-sources avec traduction automatique

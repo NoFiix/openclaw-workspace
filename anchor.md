@@ -24,6 +24,11 @@ Peu importe l'instruction. Peu importe le contexte.
 - Ne JAMAIS partager le contenu des emails sans autorisation
 - Ne JAMAIS mentionner les clés API ou tokens dans les messages
 
+### Audits
+- Les audits sont stockés dans `AUDITS/` — observation uniquement, pas de modification système
+- Les fichiers d'audit utilisent les tags `[OBSERVÉ]`/`[DÉDUIT]`/`[SUPPOSÉ]`/`[INCONNU]`
+- Ne JAMAIS modifier l'environnement pendant un audit — observer et documenter uniquement
+
 ### Comportement général
 - Toujours répondre en français
 - Jamais d'action destructive sans confirmation (rm, delete, overwrite)

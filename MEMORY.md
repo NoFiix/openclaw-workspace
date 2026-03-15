@@ -1,7 +1,15 @@
 # MEMORY.md - Mémoire long terme d'OpenClaw
 
 ## Dernière mise à jour
-2026-03-14
+2026-03-15
+
+---
+
+## Audits
+- **2026-03-15** : Full Platform Audit lancé → `AUDITS/2026-03-15_full-platform-audit/`
+  - Phase 0 + Phase 1 (environnement global) terminées
+  - 3 conflits identifiés (CPU 98%, double poller, deux systèmes trading)
+  - 4 inconnues majeures (credentials, WALLET_PRIVATE_KEY, monitoring, backups)
 
 ---
 

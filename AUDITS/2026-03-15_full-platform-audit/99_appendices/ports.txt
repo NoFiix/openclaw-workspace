@@ -1,0 +1,14 @@
+# Snapshot: ss -tlnp
+# Date: 2026-03-15T18:20Z
+
+State  Recv-Q Send-Q Local Address:Port  Peer Address:Port Process
+LISTEN 0      511        127.0.0.1:3001       0.0.0.0:*    users:(("node /home/open",pid=2148812,fd=23))   # dashboard-api
+LISTEN 0      4096   127.0.0.53%lo:53         0.0.0.0:*                                                    # systemd-resolved
+LISTEN 0      128          0.0.0.0:22         0.0.0.0:*                                                    # sshd
+LISTEN 0      511          0.0.0.0:80         0.0.0.0:*                                                    # nginx
+LISTEN 0      4096         0.0.0.0:18790      0.0.0.0:*                                                    # Docker gateway
+LISTEN 0      4096         0.0.0.0:18789      0.0.0.0:*                                                    # Docker gateway
+LISTEN 0      128             [::]:22            [::]:*                                                     # sshd (IPv6)
+LISTEN 0      511             [::]:80            [::]:*                                                     # nginx (IPv6)
+LISTEN 0      4096            [::]:18790         [::]:*                                                     # Docker gateway (IPv6)
+LISTEN 0      4096            [::]:18789         [::]:*                                                     # Docker gateway (IPv6)

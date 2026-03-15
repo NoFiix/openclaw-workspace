@@ -1,0 +1,64 @@
+# Snapshot: find workspace -maxdepth 4 -name "*.json" (excluding node_modules, .venv, state, AUDITS)
+# Date: 2026-03-15T18:20Z
+
+# === Config files ===
+/home/openclawadmin/openclaw/workspace/.claude/settings.local.json
+/home/openclawadmin/openclaw/workspace/.openclaw/workspace-state.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/.claude/settings.local.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/connectors/POLY_MARKET_CONNECTOR.config.json
+
+# === POLY_FACTORY references ===
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/references/evaluator_weights.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/references/filter_chain_order.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/references/monitoring_thresholds.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/references/nightly_schedule.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/references/station_mapping.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/references/tracked_wallets.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/references/validation_rules.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/references/wallet_blacklist_rules.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/references/weather_market_mapping.json
+
+# === POLY_FACTORY schemas ===
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/schemas/data_validation_failed.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/schemas/execute_live.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/schemas/execute_paper.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/schemas/feed_noaa_update.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/schemas/feed_price_update.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/schemas/feed_wallet_update.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/schemas/risk_global_halt.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/schemas/risk_kill_switch_triggered.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/schemas/signal_binance_score.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/schemas/signal_market_structure.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/schemas/signal_resolution_parsed.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/schemas/signal_wallet_convergence.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/schemas/system_agent_disabled.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/schemas/system_agent_stale.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/schemas/system_health_report.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/schemas/trade_live_closed.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/schemas/trade_live_opened.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/schemas/trade_paper_closed.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/schemas/trade_paper_opened.json
+/home/openclawadmin/openclaw/workspace/POLY_FACTORY/schemas/trade_signal.json
+
+# === Agent state (JS) ===
+/home/openclawadmin/openclaw/workspace/agents/learner/memory/state.json
+/home/openclawadmin/openclaw/workspace/agents/news_scoring/memory/state.json
+/home/openclawadmin/openclaw/workspace/agents/performance_analyst/memory/state.json
+/home/openclawadmin/openclaw/workspace/agents/strategy_tuner/memory/state.json
+/home/openclawadmin/openclaw/workspace/agents/trade_generator/memory/state.json
+
+# === Dashboard packages ===
+/home/openclawadmin/openclaw/workspace/dashboard/api/package.json
+/home/openclawadmin/openclaw/workspace/dashboard/api/package-lock.json
+/home/openclawadmin/openclaw/workspace/dashboard/package.json
+/home/openclawadmin/openclaw/workspace/dashboard/web/package.json
+/home/openclawadmin/openclaw/workspace/dashboard/web/package-lock.json
+
+# === Intel data ===
+/home/openclawadmin/openclaw/workspace/intel/data/2026-02-27.json
+/home/openclawadmin/openclaw/workspace/intel/data/2026-02-28.json
+/home/openclawadmin/openclaw/workspace/intel/data/2026-03-01.json
+/home/openclawadmin/openclaw/workspace/intel/data/2026-03-02.json
+/home/openclawadmin/openclaw/workspace/intel/data/2026-03-06.json
+/home/openclawadmin/openclaw/workspace/intel/data/2026-03-07.json
+/home/openclawadmin/openclaw/workspace/intel/data/2026-03-08.json

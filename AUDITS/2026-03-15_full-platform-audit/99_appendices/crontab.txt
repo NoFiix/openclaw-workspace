@@ -1,0 +1,18 @@
+# Snapshot: crontab -l
+# Date: 2026-03-15T18:20Z
+# User: openclawadmin
+
+0 7-23 * * * docker exec openclaw-openclaw-gateway-1 node /home/node/.openclaw/workspace/skills_custom/hourly_scraper.js >> /home/openclawadmin/openclaw/workspace/state/hourly_scraper.log 2>&1
+
+15 19 * * * docker exec openclaw-openclaw-gateway-1 node /home/node/.openclaw/workspace/skills_custom/scraper.js >> /home/openclawadmin/openclaw/workspace/state/daily_scraper.log 2>&1
+
+0 3 * * * docker exec openclaw-openclaw-gateway-1 node /home/node/.openclaw/workspace/skills_custom/trading/bus_rotation.js >> /home/openclawadmin/openclaw/workspace/state/trading/audit/rotation.log 2>&1
+
+30 3 * * * docker exec openclaw-openclaw-gateway-1 node /home/node/.openclaw/workspace/skills_custom/trading/bus_cleanup_trading.js >> /home/openclawadmin/openclaw/workspace/state/trading/audit/rotation.log 2>&1
+
+# nettoyage 'bus_cleanup_trading.js' tout les dimanche à 2h
+0 2 * * * docker exec openclaw-openclaw-gateway-1 node /home/node/.openclaw/workspace/skills_custom/trading/bus_cleanup_trading.js >> /home/openclawadmin/openclaw/workspace/state/cleanup.log 2>&1
+
+@reboot sleep 30 && docker exec -d openclaw-openclaw-gateway-1 sh -c 'node /home/node/.openclaw/workspace/skills_custom/trading/poller.js >> /home/node/.openclaw/workspace/state/trading/poller.log 2>&1'
+@reboot sleep 35 && docker exec -d openclaw-openclaw-gateway-1 sh -c 'node /home/node/.openclaw/workspace/skills_custom/poller.js >> /home/node/.openclaw/workspace/state/content_poller.log 2>&1'
+*/15 * * * * bash /home/openclawadmin/openclaw/workspace/skills_custom/trading/run_watchdog.sh >> /home/openclawadmin/logs/watchdog.log 2>&1

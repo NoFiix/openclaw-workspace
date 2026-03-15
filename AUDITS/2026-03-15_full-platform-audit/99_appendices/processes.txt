@@ -1,0 +1,10 @@
+# Snapshot: ps aux --sort=-%cpu | head -30
+# Date: 2026-03-15T18:20Z
+
+USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+opencla+ 2249094 97.8  2.0 177516 167324 ?       Rs   Mar14 1881:44 /home/openclawadmin/openclaw/workspace/POLY_FACTORY/.venv/bin/python run_orchestrator.py --mode paper
+opencla+ 2005669  0.7  7.8 43767480 641532 pts/3 Sl+  Mar13  25:15 claude
+ubuntu   2134341  0.7  5.7 22630464 467380 ?     Sl   Mar13  18:00 openclaw-gateway
+opencla+ 2140125  0.2  0.9 1058748 74588 ?       Ssl  Mar14   6:03 node /home/openclawadmin/openclaw/workspace/skills_custom/
+root        3366  0.1  0.5 2160512 47608 ?       Ssl  Feb24  33:39 /usr/bin/containerd
+opencla+ 2148812  0.1  1.1 1070416 96148 ?       Ssl  Mar14   4:12 node /home/openclawadmin/openclaw/workspace/dashboard/api/

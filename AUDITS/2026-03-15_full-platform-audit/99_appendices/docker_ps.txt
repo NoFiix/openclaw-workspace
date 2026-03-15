@@ -1,0 +1,7 @@
+# Snapshot: docker ps -a
+# Date: 2026-03-15T18:20Z
+
+CONTAINER ID   IMAGE                                COMMAND                  CREATED        STATUS                    PORTS                                                                     NAMES
+e21db444199b   ghcr.io/openclaw/openclaw:2026.3.2   "node dist/index.js"     43 hours ago   Exited (1) 43 hours ago                                                                             openclaw-openclaw-cli-1
+7f412fce20c1   ghcr.io/openclaw/openclaw:2026.3.2   "docker-entrypoint.s…"   43 hours ago   Up 43 hours (healthy)     0.0.0.0:18789-18790->18789-18790/tcp, [::]:18789-18790->18789-18790/tcp   openclaw-openclaw-gateway-1
+5656c6f0f27c   hello-world                          "/hello"                 2 weeks ago    Exited (0) 2 weeks ago                                                                              bold_jackson
