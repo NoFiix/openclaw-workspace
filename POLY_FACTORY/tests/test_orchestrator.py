@@ -136,12 +136,14 @@ def _make_structure(
     executability_score=75,
     slippage_1k=0.005,
     depth_usd=10000.0,
+    spread_bps=0.0,
 ) -> dict:
     return {
         "market_id": market_id,
         "executability_score": executability_score,
         "slippage_1k": slippage_1k,
         "depth_usd": depth_usd,
+        "spread_bps": spread_bps,
     }
 
 
@@ -272,8 +274,9 @@ def test_filter_1_rejects_low_executability(orchestrator):
 
 
 def test_filter_1_rejects_high_slippage(orchestrator):
+    # depth=500 → slippage = 30/500 = 0.06 > MIN_SLIPPAGE_THRESHOLD (0.03)
     orchestrator._market_structure_cache[MARKET_ID] = _make_structure(
-        slippage_1k=MIN_SLIPPAGE_THRESHOLD + 0.01
+        depth_usd=500.0,
     )
     result = orchestrator._run_filter_chain(_make_signal())
     assert result["passed"] is False

@@ -106,14 +106,15 @@ def test_execute_fill_price_includes_slippage(engine):
 
 
 def test_execute_slippage_from_market_structure(engine):
-    """When market_structure.json has an entry, slippage_actual = slippage_1k."""
-    store = DataStore = PolyDataStore(base_path=engine.base_path)
+    """When market_structure.json has depth, slippage is computed from actual trade size."""
+    store = PolyDataStore(base_path=engine.base_path)
     store.write_json("feeds/market_structure.json", {
-        "0xabc": {"slippage_1k": 0.007, "spread": 0.01}
+        "0xabc": {"depth_usd": 2850.0, "spread_bps": 0.0}
     })
+    # size_eur=28.5, depth=2850 → slippage = 28.5/2850 = 0.01
     payload = _make_payload(market_id="0xabc", slippage_estimated=0.003)
     result = engine.execute(payload)
-    assert abs(result["slippage_actual"] - 0.007) < 1e-9
+    assert abs(result["slippage_actual"] - 0.01) < 1e-9
 
 
 def test_execute_slippage_fallback(engine):

@@ -46,6 +46,7 @@ from agents.poly_market_structure_analyzer import PolyMarketStructureAnalyzer
 from agents.poly_binance_signals import PolyBinanceSignals
 from agents.poly_wallet_tracker import PolyWalletTracker
 from agents.poly_data_validator import PolyDataValidator
+from agents.poly_market_analyst import PolyMarketAnalyst
 from strategies.poly_arb_scanner import PolyArbScanner
 from strategies.poly_weather_arb import PolyWeatherArb
 from strategies.poly_latency_arb import PolyLatencyArb
@@ -199,6 +200,8 @@ class AgentScheduler:
             ("wallet_track", PolyWalletTracker(base_path=base_path),             60,  "run_once"),
             # Reads all feed state files → publishes data:validation_failed
             ("data_val",     PolyDataValidator(base_path=base_path),             10,  "run_once"),
+            # Reads active_markets.json → publishes signal:resolution_parsed (LLM, cached)
+            ("mkt_analyst",  PolyMarketAnalyst(base_path=base_path),             900, "run_once"),
 
             # ── C3: Strategy agents (poll bus → publish trade:signal) ────────
             ("arb_scanner",  PolyArbScanner(base_path=base_path),                5,   "run_once"),

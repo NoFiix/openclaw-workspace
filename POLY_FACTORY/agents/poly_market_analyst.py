@@ -89,6 +89,9 @@ class PolyMarketAnalyst:
     def _build_prompt(self, question, description):
         """Substitute placeholders in the prompt template.
 
+        Uses .replace() instead of .format() because the template contains
+        literal JSON braces in the example line that would break .format().
+
         Args:
             question: Market question string.
             description: Market description / resolution rules.
@@ -96,9 +99,10 @@ class PolyMarketAnalyst:
         Returns:
             Formatted prompt string.
         """
-        return self._prompt_template.format(
-            question=question,
-            description=description,
+        return (
+            self._prompt_template
+            .replace("{question}", question)
+            .replace("{description}", description)
         )
 
     def _call_llm(self, prompt):
@@ -255,3 +259,32 @@ class PolyMarketAnalyst:
             description=market_payload.get("description", ""),
             source_url=market_payload.get("source_url", ""),
         )
+
+    def run_once(self):
+        """Analyze all active markets not yet cached.
+
+        Reads the active markets list written by the connector and calls
+        analyze() for each uncached market.  Cached markets are skipped
+        (no LLM call).  Called periodically by AgentScheduler.
+
+        Returns:
+            List of newly analyzed result dicts.
+        """
+        markets = self.store.read_json("feeds/active_markets.json") or []
+        results = []
+        for m in markets:
+            mid = m.get("market_id", "")
+            if not mid or mid in self._cache:
+                continue
+            try:
+                result = self.analyze(
+                    market_id=mid,
+                    question=m.get("question", ""),
+                    description=m.get("description", ""),
+                )
+                results.append(result)
+            except Exception:
+                logger.warning("Failed to analyze market %s", mid, exc_info=True)
+        if results:
+            logger.info("run_once: analyzed %d new market(s)", len(results))
+        return results

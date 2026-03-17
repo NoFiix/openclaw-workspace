@@ -82,6 +82,8 @@ def _setup_state(
     base: str,
     executability_score: int = 75,
     slippage_1k: float = 0.005,
+    depth_usd: float = 10_000.0,
+    spread_bps: float = 0.0,
 ) -> None:
     """Create account and write market_structure.json to disk."""
     store = PolyDataStore(base_path=base)
@@ -118,7 +120,8 @@ def _setup_state(
         MARKET_ID: {
             "executability_score": executability_score,
             "slippage_1k": slippage_1k,
-            "depth_usd": 10_000.0,
+            "depth_usd": depth_usd,
+            "spread_bps": spread_bps,
         }
     }
     store.write_json("feeds/market_structure.json", structure)
@@ -255,9 +258,17 @@ class TestIlliquidMarketFilter1:
         self.base = str(tmp_path)
 
     def _orch_with_structure(
-        self, executability_score: int = 75, slippage_1k: float = 0.005
+        self,
+        executability_score: int = 75,
+        slippage_1k: float = 0.005,
+        depth_usd: float = 10_000.0,
     ) -> PolyFactoryOrchestrator:
-        _setup_state(self.base, executability_score=executability_score, slippage_1k=slippage_1k)
+        _setup_state(
+            self.base,
+            executability_score=executability_score,
+            slippage_1k=slippage_1k,
+            depth_usd=depth_usd,
+        )
         return _make_orch(self.base)
 
     def test_low_executability_rejected_at_filter1(self):
@@ -272,13 +283,14 @@ class TestIlliquidMarketFilter1:
         assert result["reason"] == "low_executability_score"
 
     def test_high_slippage_rejected_at_filter1(self):
-        orch = self._orch_with_structure(slippage_1k=0.05)
+        # depth=500 → slippage = 30/500 = 0.06 > 0.03
+        orch = self._orch_with_structure(depth_usd=500.0)
         result = orch._run_filter_chain(_happy_signal())
         assert result["passed"] is False
         assert result["rejected_by"] == "microstructure"
 
     def test_high_slippage_reason(self):
-        orch = self._orch_with_structure(slippage_1k=0.05)
+        orch = self._orch_with_structure(depth_usd=500.0)
         result = orch._run_filter_chain(_happy_signal())
         assert result["reason"] == "high_slippage"
 
