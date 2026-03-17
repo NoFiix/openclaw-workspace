@@ -46,6 +46,7 @@ from agents.poly_market_structure_analyzer import PolyMarketStructureAnalyzer
 from agents.poly_binance_signals import PolyBinanceSignals
 from agents.poly_wallet_tracker import PolyWalletTracker
 from agents.poly_data_validator import PolyDataValidator
+from agents.poly_market_funnel import PolyMarketFunnel
 from agents.poly_market_analyst import PolyMarketAnalyst
 from strategies.poly_arb_scanner import PolyArbScanner
 from strategies.poly_weather_arb import PolyWeatherArb
@@ -190,6 +191,10 @@ class AgentScheduler:
             ("noaa_feed",    PolyNoaaFeed(base_path=base_path),                  120, "poll_once"),
             # Polymarket wallet positions → feed:wallet_update (10 min: positions require auth)
             ("wallet_feed",  PolyWalletFeed(base_path=base_path),                600, "poll_once"),
+
+            # ── C1b: Funnel (runs after connector, before signal processors) ──
+            # Reads active_markets_full.json → writes active_markets.json (LLM shortlist)
+            ("funnel",       PolyMarketFunnel(base_path=base_path),              300, "run_once"),
 
             # ── C2: Signal processors ────────────────────────────────────────
             # Reads polymarket_prices.json → publishes signal:market_structure

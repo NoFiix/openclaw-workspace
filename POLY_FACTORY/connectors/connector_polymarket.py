@@ -24,7 +24,7 @@ logger = logging.getLogger("POLY_MARKET_CONNECTOR")
 # State file for cached prices
 PRICES_STATE_FILE = "feeds/polymarket_prices.json"
 # State file for active markets list
-ACTIVE_MARKETS_FILE = "feeds/active_markets.json"
+ACTIVE_MARKETS_FILE = "feeds/active_markets_full.json"
 
 # Default config
 DEFAULT_GAMMA_URL = "https://gamma-api.polymarket.com"
@@ -127,7 +127,7 @@ class ConnectorPolymarket(PolyMarketConnector):
         """
         url = f"{self.gamma_api_url}/markets"
         if filter_active:
-            url += "?active=true&closed=false"
+            url += "?active=true&closed=false&limit=500"
 
         response = self._http_get(url)
 
