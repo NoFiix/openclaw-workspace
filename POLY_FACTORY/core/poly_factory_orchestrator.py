@@ -128,6 +128,10 @@ class PolyFactoryOrchestrator:
         self._system_state = self._load_system_state()
         self._lifecycle = self._load_lifecycle()
 
+        # Seed resolution cache from disk so Filter 2 works immediately after
+        # restart, without waiting for market_analyst to re-publish bus events.
+        self._sync_resolution_cache()
+
     # ------------------------------------------------------------------
     # State helpers
     # ------------------------------------------------------------------
@@ -157,6 +161,43 @@ class PolyFactoryOrchestrator:
 
     def _save_lifecycle(self) -> None:
         self.store.write_json(LIFECYCLE_PATH, self._lifecycle)
+
+    def _sync_resolution_cache(self) -> None:
+        """Populate _resolution_cache from market_analyst's cache file on disk.
+
+        Mirrors the pattern of _sync_price_cache (run_orchestrator.py) so that
+        Filter 2 (resolution) has data immediately after a restart instead of
+        rejecting every signal with 'no_resolution_data' until new bus events
+        arrive.
+
+        Only loads entries that have a valid ``cached_at`` timestamp younger
+        than the 48-hour TTL used by PolyMarketAnalyst (CACHE_TTL_SECONDS).
+        Legacy entries without ``cached_at`` are ignored.
+        """
+        from agents.poly_market_analyst import CACHE_TTL_SECONDS
+
+        raw = self.store.read_json("research/resolutions_cache.json") or {}
+        now = datetime.now(timezone.utc).timestamp()
+        loaded = 0
+        for market_id, entry in raw.items():
+            cached_at = entry.get("cached_at")
+            if cached_at is None:
+                continue
+            if (now - cached_at) >= CACHE_TTL_SECONDS:
+                continue
+            # Inject the subset of fields that Filter 2 expects
+            self._resolution_cache[market_id] = {
+                "market_id": entry.get("market_id", market_id),
+                "ambiguity_score": entry.get("ambiguity_score"),
+                "unexpected_risk_score": entry.get("unexpected_risk_score"),
+                "boolean_condition": entry.get("boolean_condition"),
+            }
+            loaded += 1
+        if loaded:
+            import logging
+            logging.getLogger("POLY_FACTORY_ORCHESTRATOR").info(
+                "_sync_resolution_cache: loaded %d fresh entries from disk", loaded,
+            )
 
     def _append_cycle_log(self, entry: dict) -> None:
         existing = self.store.read_json(CYCLE_LOG_PATH) or []
