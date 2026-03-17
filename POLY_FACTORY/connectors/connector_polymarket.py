@@ -135,6 +135,13 @@ class ConnectorPolymarket(PolyMarketConnector):
         markets = []
         items = response if isinstance(response, list) else response.get("data", response.get("markets", []))
 
+        # Cache raw API items so poll_markets can build prices without
+        # a second (broken) per-market API call.
+        self._raw_markets_cache = {
+            m.get("conditionId", m.get("condition_id", m.get("id", ""))): m
+            for m in items
+        }
+
         for m in items:
             markets.append({
                 # Gamma API uses camelCase: conditionId, endDate, volume24hr
@@ -157,14 +164,30 @@ class ConnectorPolymarket(PolyMarketConnector):
         """
         url = f"{self.gamma_api_url}/markets?conditionIds={market_id}"
         response = self._http_get(url)
-        # Real API returns a list; test mocks may return a single dict — handle both.
+
+        # Normalize response to a list of market dicts.
         if isinstance(response, list):
-            data = response[0] if response else {}
+            items = response
         elif isinstance(response, dict) and "data" in response:
             items = response["data"]
-            data = items[0] if items else {}
+        elif isinstance(response, dict):
+            # Single dict (e.g. test mock) — use directly.
+            return self._build_price_payload(market_id, response)
         else:
-            data = response  # single dict (e.g. test mock)
+            items = []
+
+        # The Gamma API ?conditionIds param may not filter server-side,
+        # so we filter client-side by matching conditionId.
+        data = {}
+        for m in items:
+            if m.get("conditionId") == market_id:
+                data = m
+                break
+
+        # If no exact match found (API didn't return this market), fall back
+        # to first item only if the list has exactly one entry (filtered result).
+        if not data and len(items) == 1:
+            data = items[0]
 
         return self._build_price_payload(market_id, data)
 
@@ -178,31 +201,49 @@ class ConnectorPolymarket(PolyMarketConnector):
         Returns:
             Dict matching feed:price_update schema.
         """
-        # Extract tokens for YES/NO pricing
-        tokens = data.get("tokens", [])
-        yes_data = {}
-        no_data = {}
+        yes_price = 0.0
+        no_price = 0.0
 
-        for token in tokens:
-            outcome = token.get("outcome", "").upper()
-            if outcome == "YES":
-                yes_data = token
-            elif outcome == "NO":
-                no_data = token
+        # Primary source: outcomePrices (JSON-encoded string '["yes","no"]')
+        outcome_prices = data.get("outcomePrices")
+        if outcome_prices:
+            try:
+                parsed = json.loads(outcome_prices) if isinstance(outcome_prices, str) else outcome_prices
+                if isinstance(parsed, list) and len(parsed) >= 2:
+                    yes_price = float(parsed[0] or 0)
+                    no_price = float(parsed[1] or 0)
+            except (json.JSONDecodeError, ValueError, TypeError):
+                pass
 
-        yes_price = float(yes_data.get("price", 0) or 0)
-        no_price = float(no_data.get("price", 0) or 0)
+        # Fallback: tokens array (legacy format, kept for test compatibility)
+        yes_ask = yes_price
+        yes_bid = yes_price
+        no_ask = no_price
+        no_bid = no_price
+
+        if yes_price == 0.0 and no_price == 0.0:
+            tokens = data.get("tokens", [])
+            for token in tokens:
+                outcome = token.get("outcome", "").upper()
+                if outcome == "YES":
+                    yes_price = float(token.get("price", 0) or 0)
+                    yes_ask = float(token.get("ask", yes_price) or yes_price)
+                    yes_bid = float(token.get("bid", yes_price) or yes_price)
+                elif outcome == "NO":
+                    no_price = float(token.get("price", 0) or 0)
+                    no_ask = float(token.get("ask", no_price) or no_price)
+                    no_bid = float(token.get("bid", no_price) or no_price)
 
         return {
             "market_id": market_id,
             "platform": "polymarket",
             "yes_price": yes_price,
             "no_price": no_price,
-            "yes_ask": float(yes_data.get("ask", yes_price) or yes_price),
-            "yes_bid": float(yes_data.get("bid", yes_price) or yes_price),
-            "no_ask": float(no_data.get("ask", no_price) or no_price),
-            "no_bid": float(no_data.get("bid", no_price) or no_price),
-            "volume_24h": float(data.get("volume_24hr", 0) or 0),
+            "yes_ask": yes_ask,
+            "yes_bid": yes_bid,
+            "no_ask": no_ask,
+            "no_bid": no_bid,
+            "volume_24h": float(data.get("volume24hr", data.get("volume_24hr", 0)) or 0),
             "data_status": "VALID",
         }
 
@@ -348,9 +389,10 @@ class ConnectorPolymarket(PolyMarketConnector):
     def poll_markets(self):
         """Fetch active markets from Gamma API and persist to active_markets.json.
 
-        Also fetches the latest orderbook for each market and publishes
-        feed:price_update events so downstream agents and strategies can consume
-        fresh prices.
+        Also builds price payloads from the same API response (which contains
+        outcomePrices) and publishes feed:price_update events.  This avoids a
+        second per-market get_orderbook call whose conditionIds filter is
+        unreliable on the Gamma API.
 
         Returns:
             List of normalized market dicts (may be empty on error).
@@ -364,14 +406,15 @@ class ConnectorPolymarket(PolyMarketConnector):
         self.store.write_json(ACTIVE_MARKETS_FILE, markets)
         logger.info("poll_markets: %d active markets written", len(markets))
 
-        # Fetch and publish price updates for each active market
+        # Build and publish price updates from the raw API data cached by
+        # get_markets(), instead of calling get_orderbook() per market.
+        raw_cache = getattr(self, "_raw_markets_cache", {})
         for market in markets:
             market_id = market.get("market_id")
             if not market_id:
                 continue
-            try:
-                self.fetch_and_update(market_id)
-            except ConnectionError as e:
-                logger.warning("poll_markets: fetch_and_update(%s) failed: %s", market_id, e)
+            raw_data = raw_cache.get(market_id, {})
+            price_data = self._build_price_payload(market_id, raw_data)
+            self.update_prices(market_id, price_data)
 
         return markets
