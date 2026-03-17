@@ -6,8 +6,8 @@ Calls Claude Sonnet to parse a Polymarket market's resolution criteria into:
   - ambiguity_score: 0-10 (Filter 2 blocks trades if >= 3)
   - unexpected_risk_score: 0-10
 
-Results are cached in state/research/resolutions_cache.json — 1 LLM call per market.
-Publishes signal:resolution_parsed on new analysis.
+Results are cached in state/research/resolutions_cache.json with a 48-hour TTL.
+Publishes signal:resolution_parsed on new or refreshed analysis.
 """
 
 import json
@@ -26,6 +26,7 @@ CACHE_STATE_FILE = "research/resolutions_cache.json"
 PROMPT_FILE = "prompts/resolution_parser_prompt.txt"
 LLM_MODEL = "claude-sonnet-4-6"
 LLM_MAX_TOKENS = 500
+CACHE_TTL_SECONDS = 48 * 3600  # 48 hours
 
 
 class PolyMarketAnalyst:
@@ -74,6 +75,20 @@ class PolyMarketAnalyst:
     def _save_cache(self):
         """Persist the in-memory cache to the state file."""
         self.store.write_json(CACHE_STATE_FILE, self._cache)
+
+    def _is_cache_fresh(self, market_id):
+        """Return True if the cached entry for market_id exists and is within TTL.
+
+        Entries without a ``cached_at`` timestamp (legacy) are treated as expired.
+        """
+        entry = self._cache.get(market_id)
+        if not entry:
+            return False
+        cached_at = entry.get("cached_at")
+        if cached_at is None:
+            return False
+        age = datetime.now(timezone.utc).timestamp() - cached_at
+        return age < CACHE_TTL_SECONDS
 
     # ------------------------------------------------------------------
     # LLM helpers
@@ -206,9 +221,10 @@ class PolyMarketAnalyst:
             Dict with market_id, boolean_condition, ambiguity_score,
             unexpected_risk_score, source_url, analyzed_at.
         """
-        if market_id in self._cache:
+        if self._is_cache_fresh(market_id):
             logger.debug("Cache hit for market %s", market_id)
-            return self._cache[market_id]
+            entry = self._cache[market_id]
+            return {k: v for k, v in entry.items() if k != "cached_at"}
 
         logger.info("Analyzing market %s via LLM", market_id)
         prompt = self._build_prompt(question, description)
@@ -225,7 +241,7 @@ class PolyMarketAnalyst:
             "analyzed_at": now,
         }
 
-        self._cache[market_id] = result
+        self._cache[market_id] = {**result, "cached_at": datetime.now(timezone.utc).timestamp()}
         self._save_cache()
 
         self.bus.publish(
@@ -274,7 +290,7 @@ class PolyMarketAnalyst:
         results = []
         for m in markets:
             mid = m.get("market_id", "")
-            if not mid or mid in self._cache:
+            if not mid or self._is_cache_fresh(mid):
                 continue
             try:
                 result = self.analyze(
