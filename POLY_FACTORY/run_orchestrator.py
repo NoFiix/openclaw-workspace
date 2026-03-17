@@ -181,10 +181,16 @@ class AgentScheduler:
 
     def __init__(self, base_path):
         # Each entry: (label, instance, interval_s, method_name)
+        # Shared connector instance: poll_markets (slow) and poll_prices (fast)
+        # must share the same _prices_cache to avoid stale data.
+        _connector = ConnectorPolymarket(base_path=base_path)
+
         self._schedule = [
             # ── C1: Data feeds ──────────────────────────────────────────────
-            # Connector fetches active markets + publishes feed:price_update
-            ("connector",    ConnectorPolymarket(base_path=base_path),           300, "poll_markets"),
+            # Connector: market list refresh (slow path, 300s)
+            ("connector",        _connector,                                     300, "poll_markets"),
+            # Connector: price refresh (fast path, 30s, single batch write)
+            ("connector_prices", _connector,                                      30, "poll_prices"),
             # Binance REST snapshot → feed:binance_update + binance_raw.json
             ("binance_feed", PolyBinanceFeed(base_path=base_path),               30,  "poll_once"),
             # NOAA weather forecast → feed:noaa_update + noaa_forecasts.json

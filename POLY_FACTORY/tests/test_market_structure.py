@@ -205,50 +205,28 @@ def test_update_publishes_market_structure_event(tmp_path):
     assert matching[-1]["payload"]["market_id"] == "0xbbb"
 
 
-def test_update_publishes_illiquid_when_score_low(tmp_path):
-    """volume=50 → executability < 40 → market:illiquid must be published."""
+def test_update_logs_illiquid_when_score_low(tmp_path):
+    """volume=50 → executability < 40 → illiquid logged (no bus publish)."""
     az = _make_analyzer(tmp_path)
     payload = _make_price_payload(market_id="0xccc", volume_24h=50.0, yes_bid=0.50, yes_ask=0.50)
     structure = az.process_event(payload)
     assert structure["executability_score"] < ILLIQUID_THRESHOLD
     az.update("0xccc", structure)
 
-    bus_path = os.path.join(str(tmp_path), "bus", "pending_events.jsonl")
-    events = []
-    with open(bus_path) as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                events.append(json.loads(line))
-
-    illiquid_events = [
-        e for e in events
-        if e.get("topic") == "market:illiquid"
-        and e["payload"].get("market_id") == "0xccc"
-    ]
-    assert len(illiquid_events) >= 1
-    assert illiquid_events[-1]["payload"]["reason"] == "low_liquidity"
+    # Illiquidity info is in state file, no longer published on bus
+    state = az.store.read_json("feeds/market_structure.json")
+    assert "0xccc" in state
+    assert state["0xccc"]["executability_score"] < ILLIQUID_THRESHOLD
 
 
 def test_update_no_illiquid_when_score_high(tmp_path):
-    """volume=5000, tight spread → executability > 70 → no market:illiquid."""
+    """volume=5000, tight spread → executability > 70 → not illiquid."""
     az = _make_analyzer(tmp_path)
     payload = _make_price_payload(market_id="0xddd", volume_24h=5_000.0, yes_bid=0.499, yes_ask=0.501)
     structure = az.process_event(payload)
     assert structure["executability_score"] >= ILLIQUID_THRESHOLD
     az.update("0xddd", structure)
 
-    bus_path = os.path.join(str(tmp_path), "bus", "pending_events.jsonl")
-    events = []
-    with open(bus_path) as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                events.append(json.loads(line))
-
-    illiquid_events = [
-        e for e in events
-        if e.get("topic") == "market:illiquid"
-        and e["payload"].get("market_id") == "0xddd"
-    ]
-    assert len(illiquid_events) == 0
+    state = az.store.read_json("feeds/market_structure.json")
+    assert "0xddd" in state
+    assert state["0xddd"]["executability_score"] >= ILLIQUID_THRESHOLD

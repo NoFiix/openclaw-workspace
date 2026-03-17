@@ -188,19 +188,8 @@ class PolyMarketStructureAnalyzer:
                 structure["spread_bps"],
                 structure["depth_usd"],
             )
-            self.bus.publish(
-                topic="market:illiquid",
-                producer="POLY_MARKET_STRUCTURE_ANALYZER",
-                payload={
-                    "market_id": market_id,
-                    "platform": structure.get("platform", "polymarket"),
-                    "executability_score": structure["executability_score"],
-                    "spread_bps": structure["spread_bps"],
-                    "depth_usd": structure["depth_usd"],
-                    "reason": "low_liquidity",
-                },
-                priority="normal",
-            )
+            # Illiquidity info is already in state/feeds/market_structure.json.
+            # No bus publish — no consumer polls market:illiquid.
 
     def run_once(self):
         """Read polymarket_prices.json and compute microstructure for every known market.

@@ -283,7 +283,7 @@ class TestProcessEvent(unittest.TestCase):
             self.assertEqual(result["status"], "VALID")
             self.assertEqual(result["issues"], [])
 
-    def test_process_event_suspect_publishes(self):
+    def test_process_event_suspect_records_failure(self):
         with tempfile.TemporaryDirectory() as tmp:
             v = _make_validator(tmp)
             bad_payload = {**VALID_PRICE, "yes_price": 0.00}
@@ -292,12 +292,10 @@ class TestProcessEvent(unittest.TestCase):
 
             self.assertEqual(result["status"], "SUSPECT")
 
-            events = v.bus.poll("test_consumer", topics=["data:validation_failed"])
-            self.assertGreaterEqual(len(events), 1)
-            evt = events[0]
-            self.assertEqual(evt["topic"], "data:validation_failed")
-            self.assertEqual(evt["producer"], "POLY_DATA_VALIDATOR")
-            self.assertEqual(evt["payload"]["source"], "POLY_MARKET_CONNECTOR")
+            # Failures are no longer published on the bus (no consumer).
+            # Verify they are recorded in-memory instead.
+            source_key = "price:0xabc"
+            self.assertGreaterEqual(v._failure_counts.get(source_key, 0), 1)
 
     def test_consecutive_failures_counted(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -308,12 +306,9 @@ class TestProcessEvent(unittest.TestCase):
             for i in range(5):
                 v.process_event(event)
 
-            events = v.bus.poll("test_consumer", topics=["data:validation_failed"])
-            # Last event should have consecutive_failures >= 5
-            last_evt = events[-1]
-            self.assertGreaterEqual(
-                last_evt["payload"]["consecutive_failures"], 5
-            )
+            # Failures are tracked in-memory (no bus publish)
+            source_key = "price:0xabc"
+            self.assertGreaterEqual(v._failure_counts.get(source_key, 0), 5)
 
     def test_success_resets_counter(self):
         with tempfile.TemporaryDirectory() as tmp:

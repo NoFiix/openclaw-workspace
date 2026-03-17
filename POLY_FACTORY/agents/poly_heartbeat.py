@@ -82,12 +82,8 @@ class PolyHeartbeat:
         agent["restart_count"] = 0
         self._save_state()
 
-        self.bus.publish(
-            topic="system:heartbeat",
-            producer=agent_name,
-            payload={"agent": agent_name, "timestamp": now},
-            priority="normal",
-        )
+        # Heartbeat state is persisted via _save_state() above.
+        # No bus publish — no consumer polls system:heartbeat.
 
     def check_stale(self) -> list:
         """Return list of active agents that have gone stale.
@@ -153,17 +149,10 @@ class PolyHeartbeat:
             name = entry["agent"]
             agent = self._state["agents"][name]
 
-            # Publish stale alert first (before incrementing count)
-            self.bus.publish(
-                topic="system:agent_stale",
-                producer=PRODUCER,
-                payload={
-                    "agent": name,
-                    "last_seen": entry["last_seen"],
-                    "restart_count": agent["restart_count"],
-                },
-                priority="high",
-            )
+            # Stale state is persisted in heartbeat.json via _save_state().
+            # No bus publish — no consumer polls system:agent_stale.
+            logger.warning("Agent %s is stale (last_seen=%s, restarts=%d)",
+                           name, entry["last_seen"], agent["restart_count"])
 
             # Increment restart counter
             agent["restart_count"] += 1

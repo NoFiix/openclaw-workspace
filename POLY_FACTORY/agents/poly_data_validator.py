@@ -316,7 +316,11 @@ class PolyDataValidator:
         self._failure_counts[source_key] = 0
 
     def _publish_failure(self, source, check_failed, reason, raw_value, consecutive):
-        """Publish a data:validation_failed event to the bus.
+        """Record a validation failure (state file only, no bus publish).
+
+        Previously published data:validation_failed on the bus, but no consumer
+        polls that topic.  Writing to state/validation/last_check.json avoids
+        ~500 orphan bus events per cycle (~14 000/hour).
 
         Args:
             source: Producer name (e.g. "POLY_MARKET_CONNECTOR").
@@ -325,18 +329,8 @@ class PolyDataValidator:
             raw_value: The problematic value.
             consecutive: Consecutive failure count.
         """
-        self.bus.publish(
-            topic="data:validation_failed",
-            producer="POLY_DATA_VALIDATOR",
-            payload={
-                "source": source,
-                "check_failed": check_failed,
-                "reason": reason,
-                "raw_value": raw_value,
-                "consecutive_failures": consecutive,
-            },
-            priority="normal",
-        )
+        # Failures are recorded in-memory (_failure_counts) and summarised
+        # at the end of run_once() via _write_summary().  No bus event.
 
     def _source_key_for_topic(self, topic, payload):
         """Derive a unique source key from topic + payload identifier."""
@@ -420,4 +414,15 @@ class PolyDataValidator:
                     results.append(self.process_event(evt))
                 except Exception:
                     logger.exception("Failed to validate %s entry", topic)
+
+        # Write summary to state file (replaces bus publish)
+        suspect_count = sum(1 for r in results if r.get("status") == "SUSPECT")
+        from datetime import datetime, timezone
+        self.store.write_json("validation/last_check.json", {
+            "checked_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "total_checked": len(results),
+            "suspect_count": suspect_count,
+            "valid_count": len(results) - suspect_count,
+        })
+
         return results

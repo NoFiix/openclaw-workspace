@@ -115,6 +115,8 @@ class ConnectorPolymarket(PolyMarketConnector):
                 data = resp.read().decode("utf-8")
                 return json.loads(data)
         except urllib.error.HTTPError as e:
+            if e.code == 429:
+                logger.warning("Rate limited by Gamma API (429) — will retry next cycle")
             raise ConnectionError(f"HTTP {e.code} from {url}: {e.reason}") from e
         except urllib.error.URLError as e:
             raise ConnectionError(f"Connection failed to {url}: {e.reason}") from e
@@ -387,12 +389,11 @@ class ConnectorPolymarket(PolyMarketConnector):
         return price_data
 
     def poll_markets(self):
-        """Fetch active markets from Gamma API and persist to active_markets.json.
+        """Fetch active markets from Gamma API and persist to active_markets_full.json.
 
-        Also builds price payloads from the same API response (which contains
-        outcomePrices) and publishes feed:price_update events.  This avoids a
-        second per-market get_orderbook call whose conditionIds filter is
-        unreliable on the Gamma API.
+        Writes the market list only.  Price updates are handled separately by
+        poll_prices() which runs at a higher frequency (30s vs 300s) and writes
+        polymarket_prices.json in a single batch instead of per-market.
 
         Returns:
             List of normalized market dicts (may be empty on error).
@@ -406,15 +407,47 @@ class ConnectorPolymarket(PolyMarketConnector):
         self.store.write_json(ACTIVE_MARKETS_FILE, markets)
         logger.info("poll_markets: %d active markets written", len(markets))
 
-        # Build and publish price updates from the raw API data cached by
-        # get_markets(), instead of calling get_orderbook() per market.
-        raw_cache = getattr(self, "_raw_markets_cache", {})
-        for market in markets:
-            market_id = market.get("market_id")
+        return markets
+
+    def poll_prices(self):
+        """Refresh prices for all active markets — fast path for strategies.
+
+        Calls the Gamma API, builds price payloads, writes polymarket_prices.json
+        in a single batch write (not per-market), and publishes feed:price_update
+        bus events for each market.
+
+        Unlike poll_markets(), this does NOT update active_markets_full.json.
+
+        Returns:
+            Number of prices refreshed.
+        """
+        url = f"{self.gamma_api_url}/markets?active=true&closed=false&limit=500"
+        try:
+            response = self._http_get(url)
+        except ConnectionError as e:
+            logger.warning("poll_prices: API call failed: %s", e)
+            return 0
+
+        items = response if isinstance(response, list) else response.get("data", response.get("markets", []))
+
+        count = 0
+        for item in items:
+            market_id = item.get("conditionId", item.get("condition_id", item.get("id", "")))
             if not market_id:
                 continue
-            raw_data = raw_cache.get(market_id, {})
-            price_data = self._build_price_payload(market_id, raw_data)
-            self.update_prices(market_id, price_data)
+            price_data = self._build_price_payload(market_id, item)
+            self._prices_cache[market_id] = price_data
+            self.bus.publish(
+                topic="feed:price_update",
+                producer="POLY_MARKET_CONNECTOR",
+                payload=price_data,
+                priority="normal",
+            )
+            count += 1
 
-        return markets
+        # Single batch write to disk
+        self.store.write_json(PRICES_STATE_FILE, self._prices_cache)
+        self._last_update_time = time.time()
+        logger.info("poll_prices: %d prices refreshed", count)
+
+        return count

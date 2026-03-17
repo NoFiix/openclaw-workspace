@@ -184,15 +184,15 @@ class TestUpdate:
         assert "BTCUSDT" in state
         assert state["BTCUSDT"]["price"] == 98432.50
 
-    def test_publishes_bus_event(self, feed):
-        feed.bus.publish = MagicMock()
+    def test_update_writes_state_file(self, feed):
         payload = feed._build_payload("BTCUSDT", 98432.50, [], [], 0.15)
         feed.update("BTCUSDT", payload)
 
-        feed.bus.publish.assert_called_once()
-        args, kwargs = feed.bus.publish.call_args
-        assert kwargs.get("topic", args[0] if args else None) == "feed:binance_update"
-        assert kwargs.get("producer", args[1] if len(args) > 1 else None) == "POLY_BINANCE_FEED"
+        # feed:binance_update is no longer published on the bus (no consumer).
+        # binance_signals reads state/feeds/binance_raw.json directly.
+        state = feed.store.read_json("feeds/binance_raw.json")
+        assert state is not None
+        assert "BTCUSDT" in state
 
     def test_updates_last_update_time(self, feed):
         payload = feed._build_payload("BTCUSDT", 98432.50, [], [], 0.0)

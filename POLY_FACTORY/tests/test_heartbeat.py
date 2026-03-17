@@ -69,11 +69,11 @@ def test_ping_updates_last_seen(hb):
     assert elapsed < 5
 
 
-def test_ping_publishes_heartbeat_event(hb):
+def test_ping_updates_state_file(hb):
     hb.ping("POLY_TEST")
-    events = hb.bus.poll("test_consumer", topics=["system:heartbeat"])
-    assert len(events) == 1
-    assert events[0]["payload"]["agent"] == "POLY_TEST"
+    # Heartbeat no longer publishes system:heartbeat on the bus (no consumer).
+    # Verify state is persisted instead.
+    assert hb._state["agents"]["POLY_TEST"]["status"] == "active"
 
 
 def test_ping_auto_registers_unknown_agent(hb):
@@ -119,14 +119,13 @@ def test_disabled_agent_skipped_in_check_stale(hb):
 # run_once
 # ---------------------------------------------------------------------------
 
-def test_run_once_stale_publishes_agent_stale_event(hb):
+def test_run_once_stale_detected(hb):
     hb.register("POLY_STALE")
     # Never pinged → stale
-    hb.run_once()
-    events = hb.bus.poll("test_consumer", topics=["system:agent_stale"])
-    assert len(events) == 1
-    assert events[0]["priority"] == "high"
-    assert events[0]["payload"]["agent"] == "POLY_STALE"
+    result = hb.run_once()
+    # Stale info is no longer published on the bus (no consumer).
+    # Verify it is returned in the run_once result.
+    assert "POLY_STALE" in result["stale_agents"]
 
 
 def test_run_once_calls_restart_fn(hb_with_restart):

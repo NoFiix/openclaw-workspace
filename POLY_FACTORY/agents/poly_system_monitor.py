@@ -237,21 +237,8 @@ class PolySystemMonitor:
         all_issues = agent_issues + api_issues + infra_issues + coherence_issues
         overall_status = self._overall_level(all_issues)
 
-        # Always publish system:health_check
-        self.bus.publish(
-            topic="system:health_check",
-            producer=PRODUCER,
-            payload={
-                "status": overall_status,
-                "checked_at": now,
-                "total_issues": len(all_issues),
-                "agent_issues": len(agent_issues),
-                "api_issues": len(api_issues),
-                "infra_issues": len(infra_issues),
-                "coherence_issues": len(coherence_issues),
-            },
-            priority="normal",
-        )
+        # Health check results are written to state via audit log below.
+        # No bus publish — no consumer polls system:health_check.
 
         # Publish specific alerts if issues found
         if api_issues:

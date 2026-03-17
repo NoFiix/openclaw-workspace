@@ -176,13 +176,8 @@ class PolyBinanceFeed:
         # Write full cache to state file
         self.store.write_json(STATE_FILE, self._state_cache)
 
-        # Publish bus event
-        self.bus.publish(
-            topic="feed:binance_update",
-            producer="POLY_BINANCE_FEED",
-            payload=payload,
-            priority="normal",
-        )
+        # Data is persisted in state/feeds/binance_raw.json above.
+        # No bus publish — binance_signals reads the state file directly.
 
     def poll_once(self):
         """Fetch all symbols via REST and update state + bus.
