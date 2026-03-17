@@ -2,7 +2,7 @@
 POLY_MARKET_STRUCTURE_ANALYZER — Microstructure metrics per Polymarket market.
 
 Consumes `feed:price_update` events and computes:
-  - spread_bps, depth_usd, slippage_1k, liquidity_score, executability_score (0-100)
+  - spread_bps, depth_usd, slippage_1k (legacy), liquidity_score, executability_score (0-100)
 
 Publishes `signal:market_structure` on every update.
 Publishes `market:illiquid` when executability_score < ILLIQUID_THRESHOLD.
@@ -66,12 +66,13 @@ class PolyMarketStructureAnalyzer:
         """
         return float(volume_24h)
 
-    def _compute_slippage_1k(self, spread_bps, depth_usd):
-        """Estimate cost fraction for a $1K order.
+    def _compute_slippage(self, order_size_usd, spread_bps, depth_usd):
+        """Estimate cost fraction for an order of a given size.
 
         Uses half-spread cost + linear market impact from depth.
 
         Args:
+            order_size_usd: Order size in USD.
             spread_bps: Spread in basis points.
             depth_usd: Depth proxy in USD.
 
@@ -79,8 +80,12 @@ class PolyMarketStructureAnalyzer:
             Float fraction (e.g. 0.006 = 0.6% cost).
         """
         half_spread_frac = spread_bps / 10_000 / 2
-        market_impact_frac = 1_000 / max(depth_usd, 1_000)
+        market_impact_frac = order_size_usd / max(depth_usd, order_size_usd)
         return half_spread_frac + market_impact_frac
+
+    def _compute_slippage_1k(self, spread_bps, depth_usd):
+        """Backward-compatible wrapper: slippage for a $1K order."""
+        return self._compute_slippage(1_000, spread_bps, depth_usd)
 
     def _compute_liquidity_score(self, volume_24h):
         """Log-scaled liquidity score from 24h volume, 0-100.

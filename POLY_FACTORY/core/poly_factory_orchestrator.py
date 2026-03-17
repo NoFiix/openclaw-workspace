@@ -36,7 +36,7 @@ from core.poly_strategy_account import PolyStrategyAccount
 from core.poly_strategy_registry import PolyStrategyRegistry
 from execution.poly_order_splitter import PolyOrderSplitter
 from risk.poly_capital_manager import PolyCapitalManager
-from risk.poly_kelly_sizer import PolyKellySizer
+from risk.poly_kelly_sizer import MAX_POSITION_PCT, PolyKellySizer
 from risk.poly_kill_switch import PolyKillSwitch
 from risk.poly_risk_guardian import PolyRiskGuardian
 
@@ -45,7 +45,7 @@ CONSUMER_ID = "POLY_FACTORY_ORCHESTRATOR"
 
 # Filter thresholds
 MIN_EXECUTABILITY_SCORE = 40     # Filter 1 — microstructure gate
-MIN_SLIPPAGE_THRESHOLD = 0.02    # Filter 1 — slippage_1k < 2%
+MIN_SLIPPAGE_THRESHOLD = 0.03    # Filter 1 — slippage on real order size < 3%
 MAX_AMBIGUITY_SCORE = 3          # Filter 2 — ambiguity < 3 (strict, per pipeline §Cycle 4)
 MIN_PAPER_TRADES = 50            # promotion eligibility
 MIN_PAPER_DAYS = 14              # promotion eligibility
@@ -257,9 +257,23 @@ class PolyFactoryOrchestrator:
             return _reject("microstructure", "no_structure_data")
 
         executability_score = struct.get("executability_score", 0)
-        slippage_estimated = struct.get("slippage_1k", 1.0)
         if executability_score < MIN_EXECUTABILITY_SCORE:
             return _reject("microstructure", "low_executability_score")
+
+        # Compute slippage on the real max order size (capital × MAX_POSITION_PCT)
+        # instead of the legacy fixed $1K reference that is ~33× larger than actual trades.
+        try:
+            _acct = PolyStrategyAccount.load(account_id, self.base_path)
+            _capital = _acct.data["capital"]["current"]
+        except (FileNotFoundError, KeyError):
+            _capital = 1000.0
+        _max_order = _capital * MAX_POSITION_PCT
+        _spread_bps = struct.get("spread_bps", 0.0)
+        _depth_usd = struct.get("depth_usd", 0.0)
+        slippage_estimated = (
+            _spread_bps / 10_000 / 2
+            + _max_order / max(_depth_usd, _max_order)
+        )
         if slippage_estimated >= MIN_SLIPPAGE_THRESHOLD:
             return _reject("microstructure", "high_slippage")
         filters_passed.append("microstructure")

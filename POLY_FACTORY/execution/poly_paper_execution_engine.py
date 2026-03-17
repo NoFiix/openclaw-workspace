@@ -44,11 +44,14 @@ class PolyPaperExecutionEngine:
             counter = self._id_counter
         return f"TRD_{date_str}_{counter:04d}"
 
-    def _get_slippage(self, market_id: str, slippage_estimated: float) -> float:
-        """Return actual slippage from market structure, or fall back to estimate.
+    def _get_slippage(self, market_id: str, size_eur: float, slippage_estimated: float) -> float:
+        """Compute slippage from market structure depth for the actual trade size.
+
+        Falls back to slippage_estimated when the market has no structure data.
 
         Args:
             market_id: Market identifier.
+            size_eur: Actual trade size in EUR (used as order size proxy).
             slippage_estimated: Fallback slippage from the signal payload.
 
         Returns:
@@ -56,7 +59,11 @@ class PolyPaperExecutionEngine:
         """
         market_structure = self.store.read_json(MARKET_STRUCTURE_FILE)
         if market_structure and market_id in market_structure:
-            return market_structure[market_id].get("slippage_1k", slippage_estimated)
+            struct = market_structure[market_id]
+            depth_usd = struct.get("depth_usd", 0)
+            spread_bps = struct.get("spread_bps", 0)
+            if depth_usd > 0:
+                return (spread_bps / 10_000 / 2) + size_eur / max(depth_usd, size_eur)
         return slippage_estimated
 
     def execute(self, payload: dict) -> dict:
@@ -77,7 +84,7 @@ class PolyPaperExecutionEngine:
         expected_fill_price = float(payload["expected_fill_price"])
         slippage_estimated = float(payload["slippage_estimated"])
 
-        slippage_actual = self._get_slippage(market_id, slippage_estimated)
+        slippage_actual = self._get_slippage(market_id, size_eur, slippage_estimated)
         fill_price = min(expected_fill_price + slippage_actual, 0.99)
         fees = size_eur * FEE_RATE
 
