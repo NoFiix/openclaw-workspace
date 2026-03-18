@@ -47,8 +47,8 @@ def test_kelly_fraction_confidence_zero(sizer):
 
 
 def test_kelly_fraction_confidence_one(sizer):
-    # confidence=1.0 is out of (0,1) open interval → 0.0
-    assert sizer.kelly_fraction(1.0, 0.5) == 0.0
+    # confidence=1.0 is valid → f* = (1.0 - 0.5) / (1 - 0.5) = 1.0
+    assert sizer.kelly_fraction(1.0, 0.5) == 1.0
 
 
 def test_kelly_fraction_high_edge(sizer):
@@ -125,8 +125,11 @@ def test_compute_invalid_confidence_low(sizer):
     assert sizer.compute(0.0, 0.5, 1000.0) == 0.0
 
 
-def test_compute_invalid_confidence_high(sizer):
-    assert sizer.compute(1.0, 0.5, 1000.0) == 0.0
+def test_compute_confidence_one_valid(sizer):
+    # confidence=1.0 is now valid → should produce a positive size, capped at 3%
+    result = sizer.compute(1.0, 0.5, 1000.0)
+    assert result > 0
+    assert result <= 1000.0 * 0.03  # 3% hard cap
 
 
 def test_compute_invalid_price_zero(sizer):

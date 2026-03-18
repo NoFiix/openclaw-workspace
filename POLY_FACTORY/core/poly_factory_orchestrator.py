@@ -361,7 +361,17 @@ class PolyFactoryOrchestrator:
             if validated_size <= 0:
                 return _reject("sizing", "no_capital")
         else:
-            validated_size = self.kelly_sizer.compute(confidence, selected_price, current_capital)
+            # For BUY_NO signals: Kelly needs P(win) = prob_no, not the normalized
+            # edge score in "confidence".  Only override when signal_detail.prob_no
+            # is present and valid (currently only POLY_NO_SCANNER provides it).
+            kelly_confidence = confidence
+            if direction == "BUY_NO":
+                signal_detail = signal_payload.get("signal_detail") or {}
+                prob_no = signal_detail.get("prob_no")
+                if isinstance(prob_no, (int, float)) and 0 < prob_no <= 1:
+                    kelly_confidence = float(prob_no)
+
+            validated_size = self.kelly_sizer.compute(kelly_confidence, selected_price, current_capital)
             if validated_size <= 0:
                 return _reject("sizing", "no_kelly_edge")
         filters_passed.append("sizing")

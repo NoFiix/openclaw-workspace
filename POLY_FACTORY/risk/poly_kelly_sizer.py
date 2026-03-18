@@ -34,15 +34,15 @@ class PolyKellySizer:
             f* = (confidence - price) / (1 - price)
 
         Args:
-            confidence: Our estimated probability of winning (0 < confidence < 1).
+            confidence: Our estimated probability of winning (0 < confidence <= 1).
             price:      Market price of the contract (0 < price < 1).
 
         Returns:
-            Kelly fraction in [0, 1), or 0.0 if there is no edge or inputs are invalid.
+            Kelly fraction in [0, 1], or 0.0 if there is no edge or inputs are invalid.
         """
         if not (0 < price < 1):
             return 0.0
-        if not (0 < confidence < 1):
+        if not (0 < confidence <= 1):
             return 0.0
         if confidence <= price:
             return 0.0
@@ -53,7 +53,7 @@ class PolyKellySizer:
         """Compute the position size in EUR for a given signal.
 
         Args:
-            confidence:      Estimated win probability (0 < confidence < 1).
+            confidence:      Estimated win probability (0 < confidence <= 1).
             price:           Market price of the contract (0 < price < 1).
             current_capital: Available capital from the strategy account (EUR).
             mode:            Kelly mode — "half" (default), "quarter", or "full".
