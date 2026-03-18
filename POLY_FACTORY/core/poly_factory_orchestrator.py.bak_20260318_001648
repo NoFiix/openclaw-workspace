@@ -26,7 +26,6 @@ Bus topics published:
   - promotion:request  — promotion eligibility confirmed, awaiting human approval
 """
 
-import logging
 import threading
 from datetime import datetime, timezone
 
@@ -67,8 +66,6 @@ FILTER_NAMES = [
     "risk_guardian",
     "capital_manager",
 ]
-
-logger = logging.getLogger("POLY_FACTORY_ORCHESTRATOR")
 
 # Account statuses considered "active" for capital summation and nightly resets
 ACTIVE_STATUSES = {"paper_testing", "active"}
@@ -370,13 +367,7 @@ class PolyFactoryOrchestrator:
         # ------ Filter 5: risk_guardian ------
         category = signal_type or "unknown"
         total_capital = self._compute_total_active_capital()
-        rg_result = self.risk_guardian.check(
-            proposed_size_eur=validated_size,
-            proposed_category=category,
-            total_capital_eur=total_capital,
-            strategy=strategy,
-            strategy_capital=current_capital,
-        )
+        rg_result = self.risk_guardian.check(validated_size, category, total_capital)
         if not rg_result["allowed"]:
             return _reject("risk_guardian", rg_result.get("blocked_by") or "risk_guardian_blocked")
         filters_passed.append("risk_guardian")
@@ -628,10 +619,6 @@ class PolyFactoryOrchestrator:
                 market_id = payload.get("market_id")
                 if market_id:
                     self._resolution_cache[market_id] = payload
-                    # Close all open positions on this resolved market
-                    closed = self.risk_guardian.close_positions_for_market(market_id)
-                    if closed > 0:
-                        logger.info("Closed %d position(s) for resolved market %s", closed, market_id)
                 actions.append({"type": "resolution_cached", "market_id": market_id})
 
             elif topic == "feed:price_update":

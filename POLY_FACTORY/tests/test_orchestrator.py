@@ -67,12 +67,16 @@ class MockRiskGuardian:
         self._allowed = allowed
         self._blocked_by = blocked_by
 
-    def check(self, proposed_size_eur, proposed_category, total_capital_eur):
+    def check(self, proposed_size_eur, proposed_category, total_capital_eur,
+              strategy="", strategy_capital=0.0):
         return {
             "allowed": self._allowed,
             "blocked_by": self._blocked_by,
             "checks": {},
         }
+
+    def close_positions_for_market(self, market_id):
+        return 0
 
 
 class MockCapitalManager:
@@ -328,7 +332,7 @@ def test_filter_4_rejects_kill_switch_blocked(orchestrator):
 
 
 def test_filter_5_rejects_risk_guardian_blocked(orchestrator):
-    orchestrator.risk_guardian = MockRiskGuardian(allowed=False, blocked_by="max_positions")
+    orchestrator.risk_guardian = MockRiskGuardian(allowed=False, blocked_by="strategy_position_limit")
     result = orchestrator._run_filter_chain(_make_signal())
     assert result["passed"] is False
     assert result["rejected_by"] == "risk_guardian"

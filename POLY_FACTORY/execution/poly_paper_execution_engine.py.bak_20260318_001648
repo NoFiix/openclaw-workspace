@@ -15,7 +15,6 @@ from core.poly_data_store import PolyDataStore
 from core.poly_event_bus import PolyEventBus
 from core.poly_audit_log import PolyAuditLog
 from core.poly_strategy_account import PolyStrategyAccount
-from risk.poly_risk_guardian import PolyRiskGuardian
 
 
 CONSUMER_ID = "POLY_PAPER_EXECUTION_ENGINE"
@@ -28,12 +27,11 @@ MARKET_STRUCTURE_FILE = "feeds/market_structure.json"
 class PolyPaperExecutionEngine:
     """Simulates paper trade execution with slippage, fees, and account debiting."""
 
-    def __init__(self, base_path="state", risk_guardian=None):
+    def __init__(self, base_path="state"):
         self.base_path = base_path
         self.store = PolyDataStore(base_path=base_path)
         self.bus = PolyEventBus(base_path=base_path)
         self.audit = PolyAuditLog(base_path=base_path)
-        self.risk_guardian = risk_guardian or PolyRiskGuardian(base_path=base_path)
         self._lock = threading.Lock()
         self._id_counter = 0
 
@@ -129,10 +127,6 @@ class PolyPaperExecutionEngine:
             producer=CONSUMER_ID,
             payload=result,
         )
-
-        # Register open position in risk guardian for position tracking
-        category = payload.get("signal_type", payload.get("category", "unknown"))
-        self.risk_guardian.add_position(strategy, market_id, size_eur, category)
 
         # Decay detector feed — one JSONL record per closed paper trade
         pnl_record = {

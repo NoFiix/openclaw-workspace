@@ -56,8 +56,12 @@ class MockKillSwitch:
 
 
 class MockRiskGuardian:
-    def check(self, proposed_size_eur, proposed_category, total_capital_eur):
+    def check(self, proposed_size_eur, proposed_category, total_capital_eur,
+              strategy="", strategy_capital=0.0):
         return {"allowed": True, "blocked_by": None, "checks": {}}
+
+    def close_positions_for_market(self, market_id):
+        return 0
 
 
 class MockCapitalManager:

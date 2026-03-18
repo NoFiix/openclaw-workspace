@@ -25,7 +25,7 @@ from risk.poly_kill_switch import (
     LEVEL_PAUSE_DAILY,
     LEVEL_STOP_STRATEGY,
 )
-from risk.poly_risk_guardian import PolyRiskGuardian, MAX_POSITIONS
+from risk.poly_risk_guardian import PolyRiskGuardian, MAX_POSITIONS_PER_STRATEGY
 from risk.poly_global_risk_guard import (
     PolyGlobalRiskGuard,
     MAX_LOSS_EUR,
@@ -275,37 +275,38 @@ class TestKillSwitchDrawdown:
 # ===========================================================================
 
 class TestRiskGuardianPositionLimit:
-    """6th position blocked by risk guardian (MAX_POSITIONS = 5)."""
+    """Per-strategy position limit blocked by risk guardian."""
 
     @pytest.fixture(autouse=True)
     def setup(self, tmp_path):
         self.guardian = PolyRiskGuardian(base_path=str(tmp_path))
 
     def test_fifth_position_allowed(self):
-        _add_n_positions(self.guardian, 4)
-        result = self.guardian.check(10.0, "arb", 1000.0)
+        _add_n_positions(self.guardian, 5)
+        result = self.guardian.check(10.0, "arb", 1000.0, strategy=STRATEGY, strategy_capital=1000.0)
         assert result["allowed"] is True
 
     def test_sixth_position_blocked(self):
-        _add_n_positions(self.guardian, MAX_POSITIONS)  # 5 positions
-        result = self.guardian.check(10.0, "arb", 1000.0)
+        _add_n_positions(self.guardian, MAX_POSITIONS_PER_STRATEGY)  # 6 positions
+        result = self.guardian.check(10.0, "arb", 1000.0, strategy=STRATEGY, strategy_capital=1000.0)
         assert result["allowed"] is False
 
     def test_sixth_position_blocked_by(self):
-        _add_n_positions(self.guardian, MAX_POSITIONS)
-        result = self.guardian.check(10.0, "arb", 1000.0)
-        assert result["blocked_by"] == "max_positions"
+        _add_n_positions(self.guardian, MAX_POSITIONS_PER_STRATEGY)
+        result = self.guardian.check(10.0, "arb", 1000.0, strategy=STRATEGY, strategy_capital=1000.0)
+        assert result["blocked_by"] == "strategy_position_limit"
 
     def test_positions_ok_after_close(self):
-        _add_n_positions(self.guardian, MAX_POSITIONS)
+        _add_n_positions(self.guardian, MAX_POSITIONS_PER_STRATEGY)
         self.guardian.close_position(STRATEGY, "mkt-0")
-        result = self.guardian.check(10.0, "arb", 1000.0)
+        result = self.guardian.check(10.0, "arb", 1000.0, strategy=STRATEGY, strategy_capital=1000.0)
         assert result["allowed"] is True
 
     def test_exposure_limit_blocked(self):
         # 850€ existing exposure out of 1000€ total = 85% > 80%
+        # Use high strategy_capital so per-strategy capital check passes
         self.guardian.add_position(STRATEGY, "mkt-big", 850.0, "arb")
-        result = self.guardian.check(10.0, "arb", 1000.0)
+        result = self.guardian.check(10.0, "arb", 1000.0, strategy=STRATEGY, strategy_capital=5000.0)
         assert result["allowed"] is False
         assert result["blocked_by"] == "max_exposure"
 
