@@ -381,12 +381,9 @@ class PolyDataValidator:
                     raw_value=issue["raw_value"],
                     consecutive=consecutive,
                 )
-            # Rate-limit logging: log on 1st occurrence, then every 100th
-            if consecutive == 1 or consecutive % 100 == 0:
-                reasons = "; ".join(i["reason"] for i in result["issues"])
                 logger.warning(
                     "SUSPECT %s: %s (consecutive: %d)",
-                    source_key, reasons, consecutive,
+                    source_key, issue["reason"], consecutive,
                 )
         else:
             self._reset_failure(source_key)
