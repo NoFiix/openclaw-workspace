@@ -15,6 +15,7 @@ const KNOWN_STRATEGIES = [
 ];
 
 const INITIAL_CAPITAL = 1000.0; // 1 000€ par stratégie
+const POSITIONS_LIMIT_PER_STRATEGY = 6;
 
 // ── Cache TTLs ────────────────────────────────────────────────────────────────
 const LIVE_TTL       = 30_000;  // /live       → 30s
@@ -96,6 +97,42 @@ function loadAccounts() {
   return result;
 }
 
+/** Charge les positions ouvertes.
+ *  Source primaire : portfolio_state.json (écrit par PolyRiskGuardian.add_position).
+ *  Fallback temporaire : paper_trades_log.jsonl — regroupe les trades par
+ *  (strategy, market_id) pour reconstituer les positions ouvertes.
+ *  Ce fallback existe car les trades antérieurs au 2026-03-18 ont été exécutés
+ *  avant le câblage de add_position(). Il deviendra inactif dès que
+ *  portfolio_state.json sera créé par le prochain trade. */
+function loadOpenPositions() {
+  const primary = readJSON(join(POLY_BASE_PATH, "risk", "portfolio_state.json"));
+  if (primary?.open_positions) return primary.open_positions;
+
+  // Fallback temporaire : reconstituer depuis paper_trades_log.jsonl
+  const trades = readJSONL(join(POLY_BASE_PATH, "trading", "paper_trades_log.jsonl"));
+  if (!trades.length) return [];
+  const grouped = {};
+  for (const t of trades) {
+    const key = `${t.strategy ?? "unknown"}::${t.market_id ?? "unknown"}`;
+    if (!grouped[key]) {
+      grouped[key] = {
+        strategy:  t.strategy  ?? null,
+        market_id: t.market_id ?? null,
+        size_eur:  0,
+        category:  t.category  ?? null,
+        opened_at: null,
+      };
+    }
+    grouped[key].size_eur += t.size_eur ?? 0;
+    // Keep earliest trade timestamp as opened_at
+    const ts = tradeIdToTimestamp(t.trade_id);
+    if (!grouped[key].opened_at || (ts && ts < grouped[key].opened_at)) {
+      grouped[key].opened_at = ts;
+    }
+  }
+  return Object.values(grouped);
+}
+
 /** Charge les trades depuis le JSONL paper ou live (avec cache TTL) */
 function getCachedTrades(mode) {
   const now = Date.now();
@@ -118,40 +155,63 @@ router.get("/live", (req, res) => {
   const now = Date.now();
   if (liveCache && now - liveCacheTs < LIVE_TTL) return res.json(liveCache);
 
-  const portfolio   = readJSON(join(POLY_BASE_PATH, "risk", "portfolio_state.json"));
-  const heartbeat   = readJSON(join(POLY_BASE_PATH, "orchestrator", "heartbeat_state.json"));
-  const accounts    = loadAccounts();
-  const paperTrades = getCachedTrades("paper");
-  const liveTrades  = getCachedTrades("live");
-  const allTrades   = [...paperTrades, ...liveTrades];
+  const heartbeat      = readJSON(join(POLY_BASE_PATH, "orchestrator", "heartbeat_state.json"));
+  const accounts       = loadAccounts();
+  const openPositions  = loadOpenPositions();
+  const paperTrades    = getCachedTrades("paper");
+  const liveTrades     = getCachedTrades("live");
+  const allTrades      = [...paperTrades, ...liveTrades];
 
   const strategyNames = Object.keys(accounts).length > 0
     ? Object.keys(accounts)
     : KNOWN_STRATEGIES;
 
-  let total_capital_deployed = 0;
+  // Positions par stratégie (must be computed before strategy loop)
+  const positionsByStrategy = {};
+  let total_capital_committed = 0;
+  for (const pos of openPositions) {
+    const sn = pos.strategy ?? "unknown";
+    if (!positionsByStrategy[sn]) positionsByStrategy[sn] = { count: 0, committed: 0 };
+    positionsByStrategy[sn].count += 1;
+    positionsByStrategy[sn].committed += pos.size_eur ?? 0;
+    total_capital_committed += pos.size_eur ?? 0;
+  }
+
+  let total_capital_deployed  = 0;
+  let total_capital_available = 0;
   let total_pnl_paper        = 0;
   let pnl_today              = 0;
   const active_strategies    = [];
 
   for (const name of strategyNames) {
     const acc     = accounts[name];
-    const initial = acc?.capital?.initial ?? INITIAL_CAPITAL;
-    const current = acc?.capital?.current ?? INITIAL_CAPITAL;
-    const pnl     = acc?.pnl?.total       ?? 0;
-    const dayPnl  = acc?.pnl?.daily       ?? 0;
-    total_capital_deployed += initial;
+    const initial = acc?.capital?.initial   ?? INITIAL_CAPITAL;
+    const current = acc?.capital?.current   ?? INITIAL_CAPITAL;
+    const avail   = acc?.capital?.available ?? current;
+    const pnl     = acc?.pnl?.total        ?? 0;
+    const dayPnl  = acc?.pnl?.daily        ?? 0;
+    const stPos   = positionsByStrategy[name] ?? { count: 0, committed: 0 };
+    total_capital_deployed  += initial;
+    total_capital_available += avail;
     total_pnl_paper        += pnl;
     pnl_today              += dayPnl;
     active_strategies.push({
       name,
-      status:  acc?.status ?? "paper_testing",
-      capital: parseFloat(current.toFixed(2)),
-      pnl_eur: parseFloat(pnl.toFixed(2)),
+      status:              acc?.status ?? "paper_testing",
+      capital:             parseFloat(current.toFixed(2)),
+      capital_initial:     parseFloat(initial.toFixed(2)),
+      capital_available:   parseFloat(avail.toFixed(2)),
+      capital_committed:   parseFloat(stPos.committed.toFixed(2)),
+      capital_engaged_pct: current > 0 ? parseFloat((stPos.committed / current * 100).toFixed(2)) : null,
+      pnl_eur:             parseFloat(pnl.toFixed(2)),
+      pnl_daily:           parseFloat(dayPnl.toFixed(2)),
+      roi_pct:             initial > 0 ? parseFloat((pnl / initial * 100).toFixed(2)) : null,
+      positions_open:      stPos.count,
+      positions_limit:     POSITIONS_LIMIT_PER_STRATEGY,
     });
   }
 
-  const global_status = portfolio?.global_status ?? "NORMAL";
+  const global_status = readJSON(join(POLY_BASE_PATH, "risk", "global_risk_state.json"))?.status ?? "NORMAL";
 
   // Métriques globales calculées sur les trades avec P&L connu
   const { sharpe: sharpe_global, max_drawdown: max_drawdown_global } =
@@ -186,10 +246,22 @@ router.get("/live", (req, res) => {
     ts:                     now,
     global_status,
     kill_switch_status:     global_status,
-    total_capital_deployed: parseFloat(total_capital_deployed.toFixed(2)),
+    total_capital_deployed:  parseFloat(total_capital_deployed.toFixed(2)),
+    total_capital_available: parseFloat(total_capital_available.toFixed(2)),
+    total_capital_committed: parseFloat(total_capital_committed.toFixed(2)),
     total_pnl_paper:        parseFloat(total_pnl_paper.toFixed(2)),
     pnl_today:              parseFloat(pnl_today.toFixed(2)),
-    open_positions_count:   paperTrades.length,
+    unrealized_pnl:         null,  // Not calculable without mark-price resolution
+    open_positions_count:   openPositions.length,
+    open_positions:         openPositions.map(p => ({
+      strategy:   p.strategy   ?? null,
+      market_id:  p.market_id  ?? null,
+      size_eur:   p.size_eur   ?? null,
+      category:   p.category   ?? null,
+      direction:  p.direction  ?? null,
+      opened_at:  p.opened_at  ?? null,
+      market_url: p.market_id  ? `https://polymarket.com/markets?id=${p.market_id}` : null,
+    })),
     active_strategies_count: active_strategies.filter(s => s.status !== "stopped").length,
     sharpe_global,
     max_drawdown_global,
@@ -206,11 +278,21 @@ router.get("/strategies", (req, res) => {
   const now = Date.now();
   if (strategiesCache && now - strategiesCacheTs < STRATEGIES_TTL) return res.json(strategiesCache);
 
-  const registry    = readJSON(join(POLY_BASE_PATH, "registry", "strategy_registry.json"));
-  const accounts    = loadAccounts();
-  const paperTrades = getCachedTrades("paper");
-  const liveTrades  = getCachedTrades("live");
-  const allTrades   = [...paperTrades, ...liveTrades];
+  const registry       = readJSON(join(POLY_BASE_PATH, "registry", "strategy_registry.json"));
+  const accounts       = loadAccounts();
+  const openPositions  = loadOpenPositions();
+  const paperTrades    = getCachedTrades("paper");
+  const liveTrades     = getCachedTrades("live");
+  const allTrades      = [...paperTrades, ...liveTrades];
+
+  // Positions par stratégie (from portfolio_state.json)
+  const stratPosCounts = {};
+  const stratPosCommit = {};
+  for (const pos of openPositions) {
+    const sn = pos.strategy ?? "unknown";
+    stratPosCounts[sn] = (stratPosCounts[sn] ?? 0) + 1;
+    stratPosCommit[sn] = (stratPosCommit[sn] ?? 0) + (pos.size_eur ?? 0);
+  }
 
   // Index des trades par stratégie
   const tradesByStrategy = {};
@@ -231,28 +313,40 @@ router.get("/strategies", (req, res) => {
     const trades  = tradesByStrategy[name]   ?? [];
     const { win_rate, sharpe, max_drawdown } = computeMetrics(trades);
 
-    const initial     = acc?.capital?.initial ?? INITIAL_CAPITAL;
-    const current     = acc?.capital?.current ?? INITIAL_CAPITAL;
-    const pnl_eur     = acc?.pnl?.total       ?? 0;
+    const initial     = acc?.capital?.initial   ?? INITIAL_CAPITAL;
+    const current     = acc?.capital?.current   ?? INITIAL_CAPITAL;
+    const avail       = acc?.capital?.available ?? current;
+    const pnl_eur     = acc?.pnl?.total        ?? 0;
+    const pnl_daily   = acc?.pnl?.daily        ?? 0;
     const pnl_percent = parseFloat(((pnl_eur / initial) * 100).toFixed(2));
     const drawdown    = acc?.drawdown?.max_drawdown_pct ?? max_drawdown ?? 0;
+    const nPos        = stratPosCounts[name] ?? 0;
+    const committed   = stratPosCommit[name] ?? 0;
 
     const lastTrade   = trades.length ? trades[trades.length - 1] : null;
 
     return {
       name,
-      mode:             regData.status?.includes("live") ? "live" : "paper",
-      status:           acc?.status          ?? regData.status ?? "paper_testing",
-      capital:          parseFloat(current.toFixed(2)),
-      pnl_eur:          parseFloat(pnl_eur.toFixed(2)),
+      mode:                regData.status?.includes("live") ? "live" : "paper",
+      status:              acc?.status          ?? regData.status ?? "paper_testing",
+      capital:             parseFloat(current.toFixed(2)),
+      capital_initial:     parseFloat(initial.toFixed(2)),
+      capital_available:   parseFloat(avail.toFixed(2)),
+      capital_committed:   parseFloat(committed.toFixed(2)),
+      capital_engaged_pct: current > 0 ? parseFloat((committed / current * 100).toFixed(2)) : null,
+      pnl_eur:             parseFloat(pnl_eur.toFixed(2)),
+      pnl_daily:           parseFloat(pnl_daily.toFixed(2)),
       pnl_percent,
+      roi_pct:             initial > 0 ? parseFloat((pnl_eur / initial * 100).toFixed(2)) : null,
+      unrealized_pnl:      null,
       win_rate,
       sharpe,
-      drawdown:         parseFloat(drawdown.toFixed(2)),
-      trades_total:     trades.length,
-      trades_open:      trades.length,   // Ouverts jusqu'à résolution du marché
-      last_activity:    lastTrade ? tradeIdToTimestamp(lastTrade.trade_id) : null,
-      promotion_status: regData.promotion_requested ? "pending" : null,
+      drawdown:            parseFloat(drawdown.toFixed(2)),
+      trades_total:        acc?.performance?.total_trades ?? trades.length,
+      positions_open:      nPos,
+      positions_limit:     POSITIONS_LIMIT_PER_STRATEGY,
+      last_activity:       lastTrade ? tradeIdToTimestamp(lastTrade.trade_id) : null,
+      promotion_status:    regData.promotion_requested ? "pending" : null,
     };
   });
 

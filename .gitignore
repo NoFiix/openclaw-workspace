@@ -30,3 +30,4 @@ dashboard/web/dist/
 
 # Audit temporaire
 audit_poly.md
+*.bak_*

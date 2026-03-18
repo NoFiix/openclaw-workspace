@@ -26,7 +26,8 @@ CACHE_STATE_FILE = "research/resolutions_cache.json"
 PROMPT_FILE = "prompts/resolution_parser_prompt.txt"
 LLM_MODEL = "claude-sonnet-4-6"
 LLM_MAX_TOKENS = 500
-CACHE_TTL_SECONDS = 48 * 3600  # 48 hours
+CACHE_TTL_SECONDS = 4 * 3600  # 4 hours — rotates all active markets every ~4h
+REPROCESS_BATCH_SIZE = 10     # max markets reanalyzed per run_once() cycle
 
 
 class PolyMarketAnalyst:
@@ -277,21 +278,44 @@ class PolyMarketAnalyst:
         )
 
     def run_once(self):
-        """Analyze all active markets not yet cached.
+        """Analyze active markets whose cache has expired (oldest first).
 
-        Reads the active markets list written by the connector and calls
-        analyze() for each uncached market.  Cached markets are skipped
-        (no LLM call).  Called periodically by AgentScheduler.
+        Reads the active markets list written by the connector and selects
+        markets whose cache is stale or missing, ordered by oldest cached_at
+        first (anti-starvation).  At most REPROCESS_BATCH_SIZE markets are
+        analyzed per cycle to avoid flooding the bus or LLM.
 
         Returns:
             List of newly analyzed result dicts.
         """
         markets = self.store.read_json("feeds/active_markets.json") or []
-        results = []
+
+        # Collect eligible markets (stale or uncached)
+        eligible = []
         for m in markets:
             mid = m.get("market_id", "")
             if not mid or self._is_cache_fresh(mid):
                 continue
+            # Sort key: cached_at timestamp (0 if never cached → highest priority)
+            cached_at = 0
+            entry = self._cache.get(mid)
+            if entry and entry.get("cached_at"):
+                cached_at = entry["cached_at"]
+            eligible.append((cached_at, m))
+
+        # Oldest first, then cap to batch size
+        eligible.sort(key=lambda x: x[0])
+        batch = eligible[:REPROCESS_BATCH_SIZE]
+
+        if eligible:
+            logger.info(
+                "run_once: %d eligible market(s), processing batch of %d",
+                len(eligible), len(batch),
+            )
+
+        results = []
+        for _, m in batch:
+            mid = m.get("market_id", "")
             try:
                 result = self.analyze(
                     market_id=mid,
@@ -301,6 +325,7 @@ class PolyMarketAnalyst:
                 results.append(result)
             except Exception:
                 logger.warning("Failed to analyze market %s", mid, exc_info=True)
+
         if results:
-            logger.info("run_once: analyzed %d new market(s)", len(results))
+            logger.info("run_once: analyzed %d market(s) this cycle", len(results))
         return results

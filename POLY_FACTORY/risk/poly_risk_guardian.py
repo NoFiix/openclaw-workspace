@@ -18,6 +18,7 @@ Demarcation:
 """
 
 import copy
+import logging
 import threading
 from datetime import datetime, timezone
 
@@ -25,6 +26,7 @@ from core.poly_audit_log import PolyAuditLog
 from core.poly_data_store import PolyDataStore
 from core.poly_event_bus import PolyEventBus
 
+logger = logging.getLogger("POLY_RISK_GUARDIAN")
 
 CONSUMER_ID = "POLY_RISK_GUARDIAN"
 
@@ -58,9 +60,32 @@ class PolyRiskGuardian:
     # ------------------------------------------------------------------
 
     def _load_state(self) -> dict:
-        data = self.store.read_json(STATE_FILE)
+        """Load portfolio state from disk.
+
+        Guards against missing, empty, or corrupt files:
+        - missing file → fresh state
+        - empty or corrupt JSON → fresh state + log warning
+        - missing open_positions key → fresh state + log warning
+        """
+        try:
+            data = self.store.read_json(STATE_FILE)
+        except Exception:
+            logger.warning(
+                "portfolio_state.json corrupt or unreadable — resetting to empty state"
+            )
+            return {"open_positions": [], "last_updated": None}
         if data is None:
-            data = {"open_positions": [], "last_updated": None}
+            logger.info("portfolio_state.json not found — starting with empty state")
+            return {"open_positions": [], "last_updated": None}
+        if not isinstance(data, dict) or "open_positions" not in data:
+            logger.warning(
+                "portfolio_state.json invalid or missing open_positions — resetting to empty state"
+            )
+            return {"open_positions": [], "last_updated": None}
+        logger.info(
+            "portfolio_state.json loaded: %d open positions",
+            len(data["open_positions"]),
+        )
         return data
 
     def _save_state(self) -> None:
@@ -205,7 +230,12 @@ class PolyRiskGuardian:
             positions = self._state.setdefault("open_positions", [])
             for p in positions:
                 if p["strategy"] == strategy and p["market_id"] == market_id:
+                    old_size = p["size_eur"]
                     p["size_eur"] += size_eur
+                    logger.info(
+                        "position merged: %s on %s — %.2f€ + %.2f€ = %.2f€",
+                        strategy, market_id[:16], old_size, size_eur, p["size_eur"],
+                    )
                     self._save_state()
                     return
             positions.append({
@@ -215,6 +245,10 @@ class PolyRiskGuardian:
                 "category": category,
                 "opened_at": _now_utc(),
             })
+            logger.info(
+                "position added: %s on %s — %.2f€ (total open: %d)",
+                strategy, market_id[:16], size_eur, len(positions),
+            )
             self._save_state()
 
     def close_position(self, strategy: str, market_id: str) -> None:

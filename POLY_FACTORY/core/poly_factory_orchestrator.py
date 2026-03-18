@@ -270,6 +270,11 @@ class PolyFactoryOrchestrator:
         validated_size = None
 
         def _reject(filter_name: str, reason: str) -> dict:
+            logger.info(
+                "SIGNAL_REJECTED | strategy=%s | filter=%s | market_id=%s "
+                "| confidence=%.4f | reason=%s",
+                strategy, filter_name, market_id, confidence, reason,
+            )
             return {
                 "passed": False,
                 "validated_size_eur": None,
@@ -641,6 +646,15 @@ class PolyFactoryOrchestrator:
                 actions.append({"type": "price_cached", "market_id": market_id})
 
             self.bus.ack(CONSUMER_ID, event_id)
+
+        # Cycle summary for signal processing
+        n_validated = sum(1 for a in actions if a["type"] == "signal_validated")
+        n_rejected = sum(1 for a in actions if a["type"] == "signal_rejected")
+        if n_validated + n_rejected > 0:
+            logger.info(
+                "CYCLE_SUMMARY | signals_evaluated=%d | passed=%d | rejected=%d",
+                n_validated + n_rejected, n_validated, n_rejected,
+            )
 
         return actions
 

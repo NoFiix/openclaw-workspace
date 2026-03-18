@@ -15,8 +15,8 @@ function fmtEUR(val) {
   if (val == null) return '—';
   const abs = Math.abs(val);
   const sign = val < 0 ? '-' : val > 0 ? '+' : '';
-  if (abs >= 1000) return `${sign}${(abs / 1000).toFixed(2)}k€`;
-  return `${sign}${abs.toFixed(2)}€`;
+  if (abs >= 1000) return `${sign}${(abs / 1000).toFixed(2)}k$`;
+  return `${sign}${abs.toFixed(2)}$`;
 }
 
 function healthLabel(score) {
@@ -197,17 +197,18 @@ function StrategyCard({ s, onSelect, selected }) {
         </div>
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--text-primary)', fontWeight: 600 }}>
-            {s.capital != null ? `${s.capital.toFixed(0)}€` : '—'}
+            {s.capital != null ? `${s.capital.toFixed(0)}$` : '—'}
           </div>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-muted)', marginTop: 2 }}>capital</div>
         </div>
       </div>
 
       {/* Metric pills */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 5, marginBottom: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 5, marginBottom: 8 }}>
         {[
+          { label: 'Pos',    value: `${s.positions_open ?? 0}/${s.positions_limit ?? 6}`, ok: (s.positions_open ?? 0) > 0 && (s.positions_open ?? 0) < 4, warn: (s.positions_open ?? 0) >= (s.positions_limit ?? 6), mild: (s.positions_open ?? 0) >= 4 },
+          { label: 'ROI',    value: s.roi_pct != null ? `${s.roi_pct >= 0 ? '+' : ''}${s.roi_pct.toFixed(1)}%` : '—', ok: (s.roi_pct ?? 0) > 0, warn: (s.roi_pct ?? 0) < -10 },
           { label: 'Win%',   value: s.win_rate  != null ? `${s.win_rate.toFixed(0)}%`  : '—', ok: (s.win_rate  ?? 0) >= 52.6 },
-          { label: 'Sharpe', value: s.sharpe    != null ? s.sharpe.toFixed(2)           : '—', ok: (s.sharpe   ?? 0) >= 2.5  },
           { label: 'DD',     value: s.drawdown  != null ? `${s.drawdown.toFixed(1)}%`  : '—', warn: (s.drawdown ?? 0) > 4, mild: (s.drawdown ?? 0) > 2 },
         ].map(({ label, value, ok, warn, mild }) => (
           <div key={label} style={{ background: 'var(--bg-elevated)', borderRadius: 3, padding: '4px 6px' }}>
@@ -223,7 +224,7 @@ function StrategyCard({ s, onSelect, selected }) {
       {/* Footer */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-muted)' }}>
-          {s.trades_total ?? 0} trades
+          {s.trades_total ?? 0} trades · {(s.capital_committed ?? 0) > 0 ? `${s.capital_committed.toFixed(0)}$ engagé` : '0$ engagé'}
         </span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-muted)' }}>
           {timeAgo(s.last_activity)}
@@ -253,7 +254,7 @@ function TradeFeedRow({ t }) {
       </span>
       <span style={{ color: sideColor, fontWeight: 700 }}>{t.direction ?? '—'}</span>
       <span style={{ color: 'var(--text-primary)' }}>{t.fill_price != null ? t.fill_price.toFixed(3) : '—'}</span>
-      <span style={{ color: 'var(--amber)' }}>{t.size_eur != null ? `${t.size_eur.toFixed(0)}€` : '—'}</span>
+      <span style={{ color: 'var(--amber)' }}>{t.size_eur != null ? `${t.size_eur.toFixed(0)}$` : '—'}</span>
     </div>
   );
 }
@@ -286,13 +287,19 @@ export default function Polymarket() {
   const agents       = health?.agents_status  ?? [];
   const signals      = health?.signal_freshness ?? {};
 
-  const healthScore = live?.system_health_score ?? null;
-  const totalPnl    = live?.total_pnl_paper       ?? 0;
-  const totalCap    = live?.total_capital_deployed ?? 0;
-  const pnlPct      = totalCap > 0 ? (totalPnl / totalCap) * 100 : 0;
-  const pnlToday    = live?.pnl_today              ?? 0;
-  const openPos     = live?.open_positions_count   ?? 0;
-  const activeStrat = live?.active_strategies_count ?? 0;
+  const openPositions = live?.open_positions ?? [];
+
+  const healthScore    = live?.system_health_score ?? null;
+  const totalPnl       = live?.total_pnl_paper       ?? 0;
+  const totalCap       = live?.total_capital_deployed ?? 0;
+  const totalCommitted = live?.total_capital_committed ?? 0;
+  const totalAvailable = live?.total_capital_available ?? totalCap;
+  const engagedPct     = totalCap > 0 ? (totalCommitted / totalCap * 100) : 0;
+  const pnlPct         = totalCap > 0 ? (totalPnl / totalCap) * 100 : 0;
+  const pnlToday       = live?.pnl_today              ?? 0;
+  const unrealizedPnl  = live?.unrealized_pnl         ?? null;
+  const openPos        = live?.open_positions_count   ?? 0;
+  const activeStrat    = live?.active_strategies_count ?? 0;
 
   const globalMaxDD  = stratList.length > 0
     ? Math.max(0, ...stratList.map(s => s.drawdown ?? 0))
@@ -391,12 +398,21 @@ export default function Polymarket() {
           tooltip="Score synthétique basé sur le statut global, dead letters et agents désactivés. 80–100 = vert, 60–79 = dégradé, < 40 = critique."
         />
         <MetricCard
+          label="Capital"
+          value={`${totalCap.toFixed(0)}$`}
+          color="blue"
+          sub={`Dispo: ${totalAvailable.toFixed(0)}$ · Engagé: ${totalCommitted.toFixed(0)}$ (${engagedPct.toFixed(1)}%)`}
+          tooltip="Capital total déployé sur toutes les stratégies. Disponible = somme des capital.available par stratégie."
+        />
+        <MetricCard
           label="Total P&L (Paper)"
           value={fmtEUR(totalPnl)}
           color={(totalPnl ?? 0) >= 0 ? 'green' : 'red'}
-          sub={`${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}% · Aujourd'hui: ${fmtEUR(pnlToday)}`}
-          tooltip="P&L cumulé sur toutes les stratégies en paper trading depuis le lancement."
+          sub={`${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}% · Jour: ${fmtEUR(pnlToday)} · Unreal: ${unrealizedPnl != null ? fmtEUR(unrealizedPnl) : 'N/A'}`}
+          tooltip="P&L réalisé cumulé. Unrealized PnL non disponible (calcul hors scope)."
         />
+      </div>
+      <div className="g3 mb24">
         <MetricCard
           label="Max Drawdown"
           value={`${globalMaxDD.toFixed(2)}%`}
@@ -404,20 +420,11 @@ export default function Polymarket() {
           sub="seuil kill switch stratégie: -5% / -30%"
           tooltip="Pire drawdown observé parmi toutes les stratégies actives."
         />
-      </div>
-      <div className="g3 mb24">
-        <MetricCard
-          label="Sharpe Ratio"
-          value={globalSharpe != null ? globalSharpe.toFixed(2) : '—'}
-          color={globalSharpe != null && globalSharpe >= 2.5 ? 'green' : globalSharpe != null && globalSharpe >= 1.5 ? 'amber' : globalSharpe != null ? 'red' : ''}
-          sub="cible promotion ≥ 2.5"
-          tooltip="Sharpe ratio global calculé sur tous les trades avec P&L connu."
-        />
         <MetricCard
           label="Positions Ouvertes"
-          value={`${openPos} / 6`}
-          color={openPos >= 5 ? 'amber' : 'green'}
-          sub="max 6 simultanées (Risk Guardian)"
+          value={`${openPos}`}
+          color={openPos >= 5 ? 'amber' : openPos > 0 ? 'blue' : 'green'}
+          sub={`${totalCommitted.toFixed(0)}$ engagé · max 6/stratégie`}
         />
         <MetricCard
           label="Stratégies Actives"
@@ -450,7 +457,7 @@ export default function Polymarket() {
                   <ReferenceLine y={0} stroke="var(--border-bright)" />
                   <Tooltip
                     contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', fontFamily: 'var(--font-mono)', fontSize: 10 }}
-                    formatter={v => [`${v}€`, 'P&L cumulé']}
+                    formatter={v => [`${v}$`, 'P&L cumulé']}
                   />
                   <Line type="monotone" dataKey="pnl" stroke="var(--green)" strokeWidth={1.5} dot={false} />
                 </LineChart>
@@ -565,7 +572,9 @@ export default function Polymarket() {
                 <TH>Stratégie</TH>
                 <TH>Mode</TH>
                 <TH onClick={() => toggleSort('capital')}     active={sortBy === 'capital'}     dir={sortDir}>Capital</TH>
-                <TH onClick={() => toggleSort('pnl_eur')}     active={sortBy === 'pnl_eur'}     dir={sortDir}>P&L €</TH>
+                <TH onClick={() => toggleSort('capital_committed')} active={sortBy === 'capital_committed'} dir={sortDir}>Engagé</TH>
+                <TH onClick={() => toggleSort('positions_open')}    active={sortBy === 'positions_open'}    dir={sortDir}>Pos</TH>
+                <TH onClick={() => toggleSort('pnl_eur')}     active={sortBy === 'pnl_eur'}     dir={sortDir}>P&L $</TH>
                 <TH onClick={() => toggleSort('pnl_percent')} active={sortBy === 'pnl_percent'} dir={sortDir}>P&L %</TH>
                 <TH onClick={() => toggleSort('win_rate')}    active={sortBy === 'win_rate'}    dir={sortDir}>Win%</TH>
                 <TH onClick={() => toggleSort('sharpe')}      active={sortBy === 'sharpe'}      dir={sortDir}>Sharpe</TH>
@@ -574,7 +583,7 @@ export default function Polymarket() {
               </tr></thead>
               <tbody>
                 {sortedStrats.length === 0 ? (
-                  <tr><td colSpan={9} style={{ padding: '16px 8px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 10, textAlign: 'center' }}>Aucune donnée</td></tr>
+                  <tr><td colSpan={11} style={{ padding: '16px 8px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 10, textAlign: 'center' }}>Aucune donnée</td></tr>
                 ) : sortedStrats.map(s => {
                   const isLive = s.mode === 'live';
                   const active = selectedStrategy === s.name;
@@ -585,7 +594,13 @@ export default function Polymarket() {
                         {s.name.replace('POLY_', '')}
                       </TD>
                       <TD><Badge color={isLive ? 'green' : 'blue'}>{isLive ? 'LIVE' : 'PAPER'}</Badge></TD>
-                      <TD>{s.capital != null ? `${s.capital.toFixed(0)}€` : '—'}</TD>
+                      <TD>{s.capital != null ? `${s.capital.toFixed(0)}$` : '—'}</TD>
+                      <TD style={{ color: (s.capital_committed ?? 0) > 0 ? 'var(--amber)' : 'var(--text-secondary)' }}>
+                        {(s.capital_committed ?? 0) > 0 ? `${s.capital_committed.toFixed(0)}$` : '0$'}
+                      </TD>
+                      <TD style={{ color: (s.positions_open ?? 0) > 0 ? 'var(--blue)' : 'var(--text-secondary)' }}>
+                        {`${s.positions_open ?? 0}/${s.positions_limit ?? 6}`}
+                      </TD>
                       <TD style={{ color: (s.pnl_eur ?? 0) >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>
                         {fmtEUR(s.pnl_eur ?? 0)}
                       </TD>
@@ -632,7 +647,7 @@ export default function Polymarket() {
           )}
         </Card>
 
-        {/* Open Positions */}
+        {/* Open Positions — source: portfolio_state.json */}
         <Card title={`Positions Ouvertes (${openPos})`}>
           {openPos === 0 ? (
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-secondary)', padding: '20px 0', textAlign: 'center' }}>
@@ -641,23 +656,20 @@ export default function Polymarket() {
           ) : (
             <table className="page-table">
               <thead><tr>
-                <TH>Stratégie</TH><TH>Marché</TH><TH>Side</TH><TH>Prix</TH><TH>Taille</TH><TH>Mode</TH>
+                <TH>Stratégie</TH><TH>Marché</TH><TH>Catégorie</TH><TH>Direction</TH><TH>Taille</TH><TH>Ouvert</TH><TH>Lien</TH>
               </tr></thead>
               <tbody>
-                {recentTrades.map((t, i) => (
+                {openPositions.map((p, i) => (
                   <tr key={i}>
-                    <TD style={{ fontSize: 9 }}>{t.strategy ? t.strategy.replace('POLY_', '') : '—'}</TD>
-                    <TD style={{ fontSize: 9, color: 'var(--text-muted)', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {t.market_id ?? '—'}
+                    <TD style={{ fontSize: 9 }}>{p.strategy ? p.strategy.replace('POLY_', '') : '—'}</TD>
+                    <TD style={{ fontSize: 9, color: 'var(--text-muted)', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {p.market_id ? `${p.market_id.slice(0, 10)}…${p.market_id.slice(-6)}` : '—'}
                     </TD>
-                    <TD>
-                      <Badge color={t.direction === 'YES' ? 'green' : t.direction === 'NO' ? 'red' : 'grey'}>
-                        {t.direction ?? '—'}
-                      </Badge>
-                    </TD>
-                    <TD>{t.fill_price != null ? t.fill_price.toFixed(3) : '—'}</TD>
-                    <TD style={{ color: 'var(--amber)' }}>{t.size_eur != null ? `${t.size_eur.toFixed(0)}€` : '—'}</TD>
-                    <TD><Badge color={t.mode === 'live' ? 'green' : 'blue'}>{t.mode === 'live' ? 'LIVE' : 'PAPER'}</Badge></TD>
+                    <TD style={{ fontSize: 9 }}>{p.category && p.category !== 'unknown' ? p.category : '—'}</TD>
+                    <TD style={{ fontSize: 9 }}>{p.direction ?? '—'}</TD>
+                    <TD style={{ color: 'var(--amber)' }}>{p.size_eur != null ? `${p.size_eur.toFixed(0)}$` : '—'}</TD>
+                    <TD style={{ color: 'var(--text-muted)', fontSize: 9 }}>{p.opened_at ? timeAgo(p.opened_at) : '—'}</TD>
+                    <TD>{p.market_url ? <a href={p.market_url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--blue)', fontSize: 9, textDecoration: 'none' }}>↗</a> : '—'}</TD>
                   </tr>
                 ))}
               </tbody>
@@ -682,12 +694,12 @@ export default function Polymarket() {
           />
           <RowInfo
             label="Capital total déployé"
-            value={`${(totalCap ?? 0).toFixed(0)}€`}
+            value={`${(totalCap ?? 0).toFixed(0)}$`}
           />
           <RowInfo
             label="Positions ouvertes"
-            value={`${openPos} / 6`}
-            color={openPos >= 5 ? 'amber' : 'green'}
+            value={`${openPos}`}
+            color={openPos > 0 ? 'blue' : 'green'}
           />
           <RowInfo
             label="Dead letters (bus)"

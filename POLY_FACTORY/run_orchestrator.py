@@ -33,6 +33,7 @@ except ImportError:
 from core.poly_factory_orchestrator import PolyFactoryOrchestrator
 from core.poly_strategy_account import PolyStrategyAccount
 from core.poly_strategy_registry import PolyStrategyRegistry
+from risk.poly_risk_guardian import PolyRiskGuardian
 
 # ---------------------------------------------------------------------------
 # Agent imports
@@ -179,7 +180,7 @@ class AgentScheduler:
       C1 feeds   → C2 signal agents → C3 strategies → execution chain → system
     """
 
-    def __init__(self, base_path):
+    def __init__(self, base_path, risk_guardian=None):
         # Each entry: (label, instance, interval_s, method_name)
         # Shared connector instance: poll_markets (slow) and poll_prices (fast)
         # must share the same _prices_cache to avoid stale data.
@@ -229,7 +230,8 @@ class AgentScheduler:
             # Routes trade:validated → execute:paper or execute:live
             ("exec_router",  PolyExecutionRouter(base_path=base_path),           2,   "run_once"),
             # Simulates fill, writes paper_trades_log.jsonl
-            ("paper_engine", PolyPaperExecutionEngine(base_path=base_path),      2,   "run_once"),
+            # risk_guardian is injected to share the same instance as the orchestrator
+            ("paper_engine", PolyPaperExecutionEngine(base_path=base_path, risk_guardian=risk_guardian),  2,  "run_once"),
 
             # ── System agents ────────────────────────────────────────────────
             ("heartbeat",    PolyHeartbeat(base_path=base_path),                 300, "run_once"),
@@ -264,6 +266,128 @@ class AgentScheduler:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _seed_portfolio_state(base_path, risk_guardian):
+    """Seed portfolio_state.json from paper_trades_log.jsonl if needed.
+
+    Runs once at startup. Idempotent: does nothing if the file already
+    contains valid data with open_positions.
+
+    This covers trades executed before add_position() was wired into the
+    paper engine (pre-2026-03-18). Once the system has been running with
+    the shared risk_guardian for a while, this seed becomes a no-op.
+    """
+    import json
+    from core.poly_data_store import PolyDataStore
+
+    store = PolyDataStore(base_path=base_path)
+    state = risk_guardian.get_state()
+
+    # Guard: if state already has positions, skip seed entirely
+    if state.get("open_positions"):
+        logger.info("seed: portfolio_state.json already has %d positions — skipping",
+                     len(state["open_positions"]))
+        return
+
+    # Read paper trades log
+    trades_path = os.path.join(base_path, "trading", "paper_trades_log.jsonl")
+    if not os.path.exists(trades_path):
+        logger.info("seed: no paper_trades_log.jsonl — nothing to seed")
+        return
+
+    # Load known strategy names from accounts for validation
+    accounts_dir = os.path.join(base_path, "accounts")
+    known_strategies = set()
+    if os.path.isdir(accounts_dir):
+        for fname in os.listdir(accounts_dir):
+            if fname.startswith("ACC_POLY_") and fname.endswith(".json"):
+                # ACC_POLY_OPP_SCORER.json → POLY_OPP_SCORER
+                known_strategies.add(fname[4:-5])
+
+    # Parse trades line by line, tolerating invalid lines
+    trades = []
+    ignored = 0
+    with open(trades_path, "r", encoding="utf-8") as f:
+        for lineno, line in enumerate(f, 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                t = json.loads(line)
+            except json.JSONDecodeError:
+                logger.warning("seed: line %d — invalid JSON, ignored", lineno)
+                ignored += 1
+                continue
+            # Validate required fields
+            strategy = t.get("strategy")
+            market_id = t.get("market_id")
+            size_eur = t.get("size_eur")
+            if not strategy or not market_id or size_eur is None:
+                logger.warning("seed: line %d — missing required fields, ignored", lineno)
+                ignored += 1
+                continue
+            # Validate strategy name matches known accounts
+            if known_strategies and strategy not in known_strategies:
+                logger.warning(
+                    "seed: line %d — strategy '%s' not in known accounts, ignored",
+                    lineno, strategy,
+                )
+                ignored += 1
+                continue
+            trades.append(t)
+
+    if not trades:
+        logger.info("seed: no valid trades found — nothing to seed")
+        return
+
+    # Group by (strategy, market_id), sum size_eur
+    grouped = {}
+    for t in trades:
+        key = (t["strategy"], t["market_id"])
+        if key not in grouped:
+            grouped[key] = {
+                "strategy": t["strategy"],
+                "market_id": t["market_id"],
+                "size_eur": 0.0,
+                "category": t.get("category", "unknown"),
+                "opened_at": None,
+            }
+        grouped[key]["size_eur"] += float(t["size_eur"])
+        # Keep earliest trade_id timestamp as opened_at
+        trade_id = t.get("trade_id", "")
+        m = None
+        if trade_id:
+            import re
+            m = re.match(r"TRD_(\d{4})(\d{2})(\d{2})_", trade_id)
+        if m:
+            ts = f"{m.group(1)}-{m.group(2)}-{m.group(3)}T00:00:00Z"
+            if grouped[key]["opened_at"] is None or ts < grouped[key]["opened_at"]:
+                grouped[key]["opened_at"] = ts
+
+    # Inject positions via add_position (uses the shared instance, writes to disk)
+    for pos in grouped.values():
+        risk_guardian.add_position(
+            strategy=pos["strategy"],
+            market_id=pos["market_id"],
+            size_eur=pos["size_eur"],
+            category=pos["category"],
+        )
+
+    # Patch opened_at to historical dates (add_position always writes _now_utc).
+    # Done in a single pass after all positions are added, under the guardian's lock.
+    with risk_guardian._lock:
+        for p in risk_guardian._state.get("open_positions", []):
+            key = (p["strategy"], p["market_id"])
+            if key in grouped and grouped[key]["opened_at"]:
+                p["opened_at"] = grouped[key]["opened_at"]
+        risk_guardian._save_state()
+
+    logger.info(
+        "seed: portfolio_state.json seeded from %d historical trades → %d positions%s",
+        len(trades), len(grouped),
+        f" ({ignored} entries ignored)" if ignored else "",
+    )
+
 
 def _should_run_nightly(last_nightly_date):
     """Return True if today's nightly cycle hasn't run yet."""
@@ -318,8 +442,17 @@ def main():
     # Ensure all strategy accounts and registry entries exist before the main loop
     _bootstrap_strategies(BASE_PATH)
 
-    orchestrator = PolyFactoryOrchestrator(base_path=BASE_PATH)
-    scheduler = AgentScheduler(base_path=BASE_PATH)
+    # Single shared RiskGuardian instance — used by both orchestrator (check,
+    # close_positions_for_market) and paper_engine (add_position).
+    # Prevents state divergence between two independent in-memory copies.
+    risk_guardian = PolyRiskGuardian(base_path=BASE_PATH)
+
+    # Seed portfolio_state.json from historical trades if it doesn't exist yet.
+    # Idempotent: no-op if the file already contains valid data.
+    _seed_portfolio_state(BASE_PATH, risk_guardian)
+
+    orchestrator = PolyFactoryOrchestrator(base_path=BASE_PATH, risk_guardian=risk_guardian)
+    scheduler = AgentScheduler(base_path=BASE_PATH, risk_guardian=risk_guardian)
 
     nightly_ran_today = _last_nightly_date(orchestrator)
 

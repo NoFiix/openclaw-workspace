@@ -12,7 +12,7 @@ import json
 import logging
 import os
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from core.poly_data_store import PolyDataStore
 
@@ -368,57 +368,50 @@ class PolyEventBus:
         """
         return self.store.read_jsonl(DEAD_LETTER_FILE)
 
-    def compact(self, max_age_hours=24):
-        """Rewrite pending_events.jsonl removing acked and expired events.
+    def compact(self, max_age_hours=4):
+        """Rewrite pending_events.jsonl removing only expired events.
 
-        Maintenance operation to prevent unbounded file growth.
-        Reads ALL acked IDs from processed_events.jsonl on disk (not just the
-        in-memory deque which is capped at 10k) to ensure full cleanup.
-        Also removes events older than max_age_hours to prevent unbounded
-        growth of unacked events (e.g. system:heartbeat, feed overwrites).
+        Age-only compaction: events are kept for max_age_hours regardless of
+        ack status.  This preserves pub/sub semantics — every consumer has
+        max_age_hours to poll and ack an event before it expires.  Per-consumer
+        idempotence in poll() prevents reprocessing of already-acked events.
+
+        Also truncates processed_events.jsonl to the same retention window
+        to prevent unbounded growth (Fix C).
+
+        Why max_age_hours=4:
+          - Slowest consumer interval is 30 s (strategies).
+          - 4 h = 480× safety margin over one polling cycle.
+          - Keeps pending_events.jsonl at ~20 MB steady-state (~40 k events).
+          - Keeps processed_events.jsonl under ~120 MB (vs 600 MB+ before).
 
         Args:
-            max_age_hours: Remove unacked events older than this. Default 24h.
+            max_age_hours: Remove events older than this. Default 4h.
         """
-        # Build complete set of acked IDs from disk — the in-memory deque
-        # is bounded to 10k and loses older entries, causing stale events
-        # to accumulate indefinitely.
-        all_processed = self.store.read_jsonl(PROCESSED_FILE)
-        all_acked = set()
-        for rec in all_processed:
-            eid = rec.get("event_id")
-            if eid:
-                all_acked.add(eid)
-        # Also include in-memory acked IDs (may include recently acked not yet on disk)
-        all_acked.update(self._acked_ids)
+        import tempfile
 
-        # Compute age cutoff
-        cutoff = datetime.now(timezone.utc)
-        from datetime import timedelta
-        cutoff = cutoff - timedelta(hours=max_age_hours)
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(hours=max_age_hours)
         cutoff_str = cutoff.strftime("%Y-%m-%dT%H:%M:%S")
 
+        # --- Compact pending_events.jsonl (age-only) ---
         all_events = self.store.read_jsonl(PENDING_FILE)
         remaining = []
         for evt in all_events:
-            eid = evt.get("event_id")
-            if eid in all_acked:
-                continue  # already processed
             ts = evt.get("timestamp", "")
             if ts < cutoff_str:
-                continue  # expired (older than max_age_hours)
+                continue  # expired
             remaining.append(evt)
 
-        logger.info("compact: %d → %d events (removed %d acked + %d expired)",
-                     len(all_events), len(remaining),
-                     len(all_events) - len(remaining),  # total removed
-                     0)  # approximate
+        n_removed = len(all_events) - len(remaining)
+        logger.info(
+            "compact pending: %d → %d events (removed %d expired, cutoff %s)",
+            len(all_events), len(remaining), n_removed, cutoff_str,
+        )
 
-        # Atomic rewrite via write_json pattern (write tmp + rename)
         full_path = self.store._resolve(PENDING_FILE)
         dir_path = os.path.dirname(full_path)
 
-        import tempfile
         fd, tmp_path = tempfile.mkstemp(dir=dir_path, suffix=".tmp")
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -429,3 +422,32 @@ class PolyEventBus:
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
             raise
+
+        # --- Truncate processed_events.jsonl (same retention window) ---
+        processed_path = self.store._resolve(PROCESSED_FILE)
+        if os.path.exists(processed_path):
+            all_processed = self.store.read_jsonl(PROCESSED_FILE)
+            kept = []
+            for rec in all_processed:
+                acked_at = rec.get("acked_at", "")
+                if acked_at >= cutoff_str:
+                    kept.append(rec)
+
+            n_proc_removed = len(all_processed) - len(kept)
+            if n_proc_removed > 0:
+                logger.info(
+                    "compact processed: %d → %d records (removed %d older than %s)",
+                    len(all_processed), len(kept), n_proc_removed, cutoff_str,
+                )
+                fd2, tmp_path2 = tempfile.mkstemp(
+                    dir=os.path.dirname(processed_path), suffix=".tmp",
+                )
+                try:
+                    with os.fdopen(fd2, "w", encoding="utf-8") as f:
+                        for rec in kept:
+                            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                    os.replace(tmp_path2, processed_path)
+                except Exception:
+                    if os.path.exists(tmp_path2):
+                        os.unlink(tmp_path2)
+                    raise
