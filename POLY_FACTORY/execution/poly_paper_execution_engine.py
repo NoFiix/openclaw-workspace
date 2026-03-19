@@ -8,8 +8,11 @@ SAFETY: This module must not import the clob client library, access wallets, or 
 It is physically incapable of sending real orders.
 """
 
+import logging
 import threading
 from datetime import datetime, timezone
+
+logger = logging.getLogger("POLY_PAPER_EXECUTION_ENGINE")
 
 from core.poly_data_store import PolyDataStore
 from core.poly_event_bus import PolyEventBus
@@ -86,6 +89,17 @@ class PolyPaperExecutionEngine:
         expected_fill_price = float(payload["expected_fill_price"])
         slippage_estimated = float(payload["slippage_estimated"])
 
+        # Capital check: reject if available capital is insufficient
+        account_pre = PolyStrategyAccount.load(account_id, self.base_path)
+        available = account_pre.data["capital"]["available"]
+        required = size_eur + size_eur * FEE_RATE
+        if available < required:
+            logger.info(
+                "REJECTED: insufficient capital | strategy=%s | available=%.2f | required=%.2f | market=%s",
+                strategy, available, required, market_id,
+            )
+            return None
+
         slippage_actual = self._get_slippage(market_id, size_eur, slippage_estimated)
         fill_price = min(expected_fill_price + slippage_actual, 0.99)
         fees = size_eur * FEE_RATE
@@ -159,5 +173,6 @@ class PolyPaperExecutionEngine:
         for evt in events:
             result = self.execute(evt["payload"])
             self.bus.ack(CONSUMER_ID, evt["event_id"])
-            results.append(result)
+            if result is not None:
+                results.append(result)
         return results

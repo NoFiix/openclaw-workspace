@@ -137,44 +137,74 @@ class PolyEventBus:
     _fc_size: int = 0
     _fc_path: str | None = None
 
+    # Class-level acked IDs and consumer sets, shared across all instances.
+    # Loaded once from processed_events.jsonl on first instantiation;
+    # rebuilt during compact().  Prevents re-scanning the (potentially
+    # multi-GB) processed file on every new PolyEventBus() instance.
+    _ack_lock: threading.Lock = threading.Lock()
+    _acked_ids: set = set()
+    _consumer_processed: dict = {}
+    _acked_loaded: bool = False
+
     def __init__(self, base_path="state"):
         self.store = PolyDataStore(base_path=base_path)
         self._lock = threading.Lock()
 
-        # Per-consumer idempotence sets (bounded deques)
-        self._consumer_processed = {}
-
         # Poll call counter — used to throttle auto-compaction checks
         self._poll_count = 0
 
-        # Global deque of acked event_ids, bounded to last 10 000 (spec: CLAUDE.md)
-        self._acked_ids = collections.deque(maxlen=IDEMPOTENCE_SET_SIZE)
-
-        # Load previously acked event_ids from processed_events.jsonl
-        self._load_acked_ids()
+        # Load previously acked event_ids (once per process)
+        with PolyEventBus._ack_lock:
+            if not PolyEventBus._acked_loaded:
+                self._load_acked_ids()
+                PolyEventBus._acked_loaded = True
 
     def _load_acked_ids(self):
-        """Load last N acked event_ids from processed_events.jsonl on startup.
+        """Load acked event_ids from processed_events.jsonl on startup.
 
-        Only reads the tail of the file (last IDEMPOTENCE_SET_SIZE lines)
-        to avoid loading the entire file into memory — it can grow to
-        hundreds of MB over time.
+        Only loads IDs that are still present in pending_events.jsonl,
+        so memory stays proportional to the pending event count (~200 k
+        IDs ≈ 15 MB) regardless of how large processed_events.jsonl is
+        (can reach GB after a re-ack storm).
         """
+        # 1. Build the set of IDs still in pending (fast: ~190 k lines)
+        pending_path = self.store._resolve(PENDING_FILE)
+        pending_ids = set()
+        if os.path.exists(pending_path):
+            with open(pending_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        try:
+                            eid = json.loads(line).get("event_id")
+                            if eid:
+                                pending_ids.add(eid)
+                        except (json.JSONDecodeError, AttributeError):
+                            pass
+
+        if not pending_ids:
+            return
+
+        # 2. Scan processed and keep only IDs that are in pending
         full_path = self.store._resolve(PROCESSED_FILE)
         if not os.path.exists(full_path):
             return
-        tail = collections.deque(maxlen=IDEMPOTENCE_SET_SIZE)
+        loaded = set()
         with open(full_path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line:
                     try:
                         eid = json.loads(line).get("event_id")
-                        if eid:
-                            tail.append(eid)
+                        if eid and eid in pending_ids:
+                            loaded.add(eid)
                     except (json.JSONDecodeError, AttributeError):
                         pass
-        self._acked_ids.extend(tail)
+        PolyEventBus._acked_ids = loaded
+        logger.info(
+            "_load_acked_ids: %d pending IDs, %d acked IDs loaded (from processed)",
+            len(pending_ids), len(loaded),
+        )
 
     def _generate_event_id(self):
         """Generate a unique event ID: EVT_{YYYYMMDD}_{HHMMSS}_{counter:04d}.
@@ -296,14 +326,11 @@ class PolyEventBus:
             self.compact()
 
         # Ensure consumer has an idempotence set
-        if consumer_id not in self._consumer_processed:
-            self._consumer_processed[consumer_id] = collections.deque(
-                maxlen=IDEMPOTENCE_SET_SIZE
-            )
+        if consumer_id not in PolyEventBus._consumer_processed:
+            PolyEventBus._consumer_processed[consumer_id] = set()
 
-        consumer_set = self._consumer_processed[consumer_id]
-        consumer_seen = set(consumer_set)
-        acked_set = set(self._acked_ids)  # O(1) lookups instead of O(n) deque scan
+        consumer_seen = PolyEventBus._consumer_processed[consumer_id]
+        acked_set = PolyEventBus._acked_ids  # already a set — O(1) lookups
 
         # Filter: not globally acked, not already seen by this consumer
         filtered = []
@@ -351,14 +378,12 @@ class PolyEventBus:
             event_id: The event_id to acknowledge.
         """
         # Add to consumer's idempotence set
-        if consumer_id not in self._consumer_processed:
-            self._consumer_processed[consumer_id] = collections.deque(
-                maxlen=IDEMPOTENCE_SET_SIZE
-            )
-        self._consumer_processed[consumer_id].append(event_id)
+        if consumer_id not in PolyEventBus._consumer_processed:
+            PolyEventBus._consumer_processed[consumer_id] = set()
+        PolyEventBus._consumer_processed[consumer_id].add(event_id)
 
         # Add to global acked set
-        self._acked_ids.append(event_id)
+        PolyEventBus._acked_ids.add(event_id)
 
         # Persist to processed_events.jsonl
         self.store.append_jsonl(PROCESSED_FILE, {
@@ -392,7 +417,7 @@ class PolyEventBus:
             return None
 
         # Mark original as acked (consumed, will be replaced)
-        self._acked_ids.append(event_id)
+        PolyEventBus._acked_ids.add(event_id)
 
         new_retry_count = original.get("retry_count", 0) + 1
 
@@ -486,31 +511,59 @@ class PolyEventBus:
                 os.unlink(tmp_path)
             raise
 
+        # --- Rebuild in-memory acked sets after compaction ---
+        # Keep only IDs that are still in the remaining pending events.
+        # This bounds memory to the retention window and prevents stale
+        # IDs from accumulating forever.
+        remaining_ids = {evt.get("event_id") for evt in remaining if evt.get("event_id")}
+        old_acked_size = len(PolyEventBus._acked_ids)
+        PolyEventBus._acked_ids = PolyEventBus._acked_ids & remaining_ids
+        for cid in PolyEventBus._consumer_processed:
+            PolyEventBus._consumer_processed[cid] = (
+                PolyEventBus._consumer_processed[cid] & remaining_ids
+            )
+        logger.info(
+            "compact acked_ids: %d → %d (pruned %d stale)",
+            old_acked_size, len(PolyEventBus._acked_ids),
+            old_acked_size - len(PolyEventBus._acked_ids),
+        )
+
         # --- Truncate processed_events.jsonl (same retention window) ---
+        # Streaming approach: read line-by-line and write kept records
+        # directly to a temp file, never loading the full file into memory
+        # (it can reach multiple GB after a re-ack storm).
         processed_path = self.store._resolve(PROCESSED_FILE)
         if os.path.exists(processed_path):
-            all_processed = self.store.read_jsonl(PROCESSED_FILE)
-            kept = []
-            for rec in all_processed:
-                acked_at = rec.get("acked_at", "")
-                if acked_at >= cutoff_str:
-                    kept.append(rec)
-
-            n_proc_removed = len(all_processed) - len(kept)
-            if n_proc_removed > 0:
-                logger.info(
-                    "compact processed: %d → %d records (removed %d older than %s)",
-                    len(all_processed), len(kept), n_proc_removed, cutoff_str,
-                )
-                fd2, tmp_path2 = tempfile.mkstemp(
-                    dir=os.path.dirname(processed_path), suffix=".tmp",
-                )
-                try:
-                    with os.fdopen(fd2, "w", encoding="utf-8") as f:
-                        for rec in kept:
-                            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            n_total = 0
+            n_kept = 0
+            fd2, tmp_path2 = tempfile.mkstemp(
+                dir=os.path.dirname(processed_path), suffix=".tmp",
+            )
+            try:
+                with os.fdopen(fd2, "w", encoding="utf-8") as fout:
+                    with open(processed_path, "r", encoding="utf-8") as fin:
+                        for line in fin:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            n_total += 1
+                            try:
+                                rec = json.loads(line)
+                                if rec.get("acked_at", "") >= cutoff_str:
+                                    fout.write(line + "\n")
+                                    n_kept += 1
+                            except json.JSONDecodeError:
+                                pass
+                n_removed = n_total - n_kept
+                if n_removed > 0:
+                    logger.info(
+                        "compact processed: %d → %d records (removed %d older than %s)",
+                        n_total, n_kept, n_removed, cutoff_str,
+                    )
                     os.replace(tmp_path2, processed_path)
-                except Exception:
-                    if os.path.exists(tmp_path2):
-                        os.unlink(tmp_path2)
-                    raise
+                else:
+                    os.unlink(tmp_path2)
+            except Exception:
+                if os.path.exists(tmp_path2):
+                    os.unlink(tmp_path2)
+                raise

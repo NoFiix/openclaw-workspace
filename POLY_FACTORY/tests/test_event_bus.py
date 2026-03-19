@@ -108,14 +108,19 @@ class TestIdempotence:
 
         assert events_a[0]["event_id"] == events_b[0]["event_id"]
 
-    def test_idempotence_set_bounded(self, bus):
+    def test_idempotence_set_pruned_on_compact(self, bus):
         # Publish and ack more than IDEMPOTENCE_SET_SIZE events
         for i in range(IDEMPOTENCE_SET_SIZE + 100):
             env = bus.publish("test:flood", "TEST", {"i": i})
-            bus.ack("consumer_1", env["event_id"])
+            bus.ack("flood_consumer", env["event_id"])
 
-        # Consumer's deque should not exceed max size
-        assert len(bus._consumer_processed["consumer_1"]) == IDEMPOTENCE_SET_SIZE
+        # Set is unbounded — holds all acked IDs (>10 000)
+        assert len(PolyEventBus._consumer_processed["flood_consumer"]) >= IDEMPOTENCE_SET_SIZE + 100
+
+        # After compact, only IDs still in pending remain
+        bus.compact(max_age_hours=4)
+        # All flood events are recent → they stay in pending → set stays large
+        assert len(PolyEventBus._consumer_processed["flood_consumer"]) >= IDEMPOTENCE_SET_SIZE + 100
 
 
 class TestRetryAndDeadLetter:

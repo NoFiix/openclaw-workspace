@@ -127,6 +127,9 @@ class PolyFactoryOrchestrator:
 
         self._lock = threading.Lock()
 
+        # Kill switch dedup: log each (strategy, level, reason) only once
+        self._ks_logged: set = set()
+
         # Persisted state loaded at startup
         self._system_state = self._load_system_state()
         self._lifecycle = self._load_lifecycle()
@@ -134,6 +137,10 @@ class PolyFactoryOrchestrator:
         # Seed resolution cache from disk so Filter 2 works immediately after
         # restart, without waiting for market_analyst to re-publish bus events.
         self._sync_resolution_cache()
+
+        # Register all known strategies with the kill switch so run_once()
+        # will evaluate their drawdown on every tick.
+        self._register_strategies_with_kill_switch()
 
     # ------------------------------------------------------------------
     # State helpers
@@ -236,6 +243,18 @@ class PolyFactoryOrchestrator:
             except FileNotFoundError:
                 pass
         return total
+
+    def _register_strategies_with_kill_switch(self) -> None:
+        """Register all lifecycle strategies with the kill switch at startup."""
+        with self._lock:
+            strategies = list(self._lifecycle.keys())
+        for strategy in strategies:
+            account_id = f"ACC_{strategy}"
+            self.kill_switch.register(strategy, account_id)
+        if strategies:
+            logger.info(
+                "kill_switch: registered %d strategies", len(strategies),
+            )
 
     # ------------------------------------------------------------------
     # 7-Filter chain
@@ -608,6 +627,23 @@ class PolyFactoryOrchestrator:
         Returns:
             List of action dicts — one per event processed.
         """
+        # Evaluate kill switch for all registered strategies BEFORE
+        # processing any bus events.  This ensures check_pre_trade()
+        # returns up-to-date status when filtering trade:signal events.
+        try:
+            ks_results = self.kill_switch.run_once()
+            for r in ks_results:
+                key = (r.get("strategy"), r.get("level"), r.get("reason"))
+                if key not in self._ks_logged:
+                    self._ks_logged.add(key)
+                    logger.info(
+                        "KILL_SWITCH_TRIGGERED | strategy=%s | level=%s | reason=%s | drawdown=%.2f%%",
+                        r.get("strategy"), r.get("level"),
+                        r.get("reason"), r.get("drawdown_pct", 0),
+                    )
+        except Exception:
+            logger.exception("kill_switch.run_once() failed")
+
         events = self.bus.poll(CONSUMER_ID, topics=_TOPICS)
         actions = []
 
