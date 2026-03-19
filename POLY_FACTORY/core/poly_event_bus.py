@@ -126,6 +126,17 @@ class PolyEventBus:
     _class_counter_date: str | None = None
     _class_lock: threading.Lock = threading.Lock()
 
+    # Class-level incremental file cache for pending_events.jsonl.
+    # Shared across all instances in the same process to avoid re-parsing
+    # the entire file (~48 MB, ~106 k lines) on every poll() call.
+    # Invalidation: size < cached → compact detected → full re-read;
+    #               size > cached → incremental read of new bytes only;
+    #               size == cached → return cached list (zero I/O).
+    _fc_lock: threading.Lock = threading.Lock()
+    _fc_events: list = []
+    _fc_size: int = 0
+    _fc_path: str | None = None
+
     def __init__(self, base_path="state"):
         self.store = PolyDataStore(base_path=base_path)
         self._lock = threading.Lock()
@@ -216,6 +227,57 @@ class PolyEventBus:
         self.store.append_jsonl(PENDING_FILE, envelope)
         return envelope
 
+    def _read_pending_cached(self):
+        """Read pending_events.jsonl with incremental caching.
+
+        Uses a class-level cache shared across all PolyEventBus instances in
+        the same process.  Between compacts the file only grows (appends), so
+        we seek to the last-known size and parse only the new bytes.
+
+        Invalidation rules:
+          - size == cached  → zero I/O, return cached list
+          - size >  cached  → read delta bytes, append parsed events
+          - size <  cached  → file was rewritten (compact) → full re-read
+        """
+        full_path = self.store._resolve(PENDING_FILE)
+
+        with PolyEventBus._fc_lock:
+            try:
+                file_size = os.path.getsize(full_path)
+            except FileNotFoundError:
+                PolyEventBus._fc_events = []
+                PolyEventBus._fc_size = 0
+                return []
+
+            cached_size = PolyEventBus._fc_size
+
+            # No change — return cached list (zero I/O)
+            if file_size == cached_size and PolyEventBus._fc_path == full_path:
+                return PolyEventBus._fc_events
+
+            # Compact detected (or first call / different path) — full re-read
+            if file_size < cached_size or PolyEventBus._fc_path != full_path:
+                PolyEventBus._fc_events = self.store.read_jsonl(PENDING_FILE)
+                PolyEventBus._fc_size = file_size
+                PolyEventBus._fc_path = full_path
+                return PolyEventBus._fc_events
+
+            # File grew (append only) — read only new bytes
+            with open(full_path, "r", encoding="utf-8") as f:
+                f.seek(cached_size)
+                new_data = f.read()
+
+            for line in new_data.split("\n"):
+                line = line.strip()
+                if line:
+                    try:
+                        PolyEventBus._fc_events.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        pass
+
+            PolyEventBus._fc_size = file_size
+            return PolyEventBus._fc_events
+
     def poll(self, consumer_id, topics=None):
         """Poll for unprocessed events.
 
@@ -226,11 +288,11 @@ class PolyEventBus:
         Returns:
             List of envelope dicts, sorted by priority (high first) then timestamp.
         """
-        all_events = self.store.read_jsonl(PENDING_FILE)
+        all_events = self._read_pending_cached()
 
-        # Auto-compact: check every 25 polls, trigger if file exceeds 5 000 events
+        # Auto-compact: check every 200 polls, trigger if file exceeds 5 000 events
         self._poll_count += 1
-        if self._poll_count % 25 == 0 and len(all_events) > 5_000:
+        if self._poll_count % 200 == 0 and len(all_events) > 5_000:
             self.compact()
 
         # Ensure consumer has an idempotence set
@@ -241,12 +303,13 @@ class PolyEventBus:
 
         consumer_set = self._consumer_processed[consumer_id]
         consumer_seen = set(consumer_set)
+        acked_set = set(self._acked_ids)  # O(1) lookups instead of O(n) deque scan
 
         # Filter: not globally acked, not already seen by this consumer
         filtered = []
         for evt in all_events:
             eid = evt.get("event_id")
-            if eid in self._acked_ids:
+            if eid in acked_set:
                 continue
             if eid in consumer_seen:
                 continue
