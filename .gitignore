@@ -31,3 +31,8 @@ dashboard/web/dist/
 # Audit temporaire
 audit_poly.md
 *.bak_*
+CLAUDE.md
+ARCHITECTURE.md
+DECISIONS.md
+NOTES_TECHNIQUES.md
+ROADMAP.md
