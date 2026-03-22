@@ -49,28 +49,37 @@ export default function Costs() {
     ? Object.entries(data.by_agent).map(([agent, v]) => ({ agent, ...v }))
     : [];
 
+  // Helper: get cost from nested or flat format
+  const getCost = (v, period) => {
+    if (v?.[period]?.cost != null) return v[period].cost;
+    if (typeof v?.[period] === 'number') return v[period];
+    return 0;
+  };
+
   // Agréger par modèle pour le pie chart
   const byModel = Object.values(
     byAgentArr.reduce((acc, a) => {
       const m = shortModel(a.model);
       if (!acc[m]) acc[m] = { model: m, cost_usd: 0 };
-      acc[m].cost_usd += a.today || 0;
+      acc[m].cost_usd += getCost(a, 'today');
       return acc;
     }, {})
   );
 
   const totalToday = data?.today ?? 0;
+  const totalWeek  = data?.week  ?? 0;
   const totalMonth = data?.month ?? 0;
 
   return (
     <div>
       <SectionTitle>Coûts Tokens LLM</SectionTitle>
 
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:24 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:12, marginBottom:24 }}>
         <MetricCard label="Aujourd'hui"   value={fmtUSD(totalToday)}  color="amber" sub="Tous modèles" />
+        <MetricCard label="7 derniers jours" value={fmtUSD(totalWeek)} color="purple" sub="rolling week" />
         <MetricCard label="Ce mois"       value={fmtUSD(totalMonth)}  color="blue"  sub="cumulé" />
         <MetricCard label="Agents actifs" value={byAgentArr.length}   sub="avec LLM" />
-        <MetricCard label="Top agent"     value={byAgentArr.sort((a,b)=>(b.today||0)-(a.today||0))[0]?.agent?.split('_')[0] ?? '—'} sub="coût le plus élevé" />
+        <MetricCard label="Top agent"     value={byAgentArr.sort((a,b)=>getCost(b,'today')-getCost(a,'today'))[0]?.agent?.split('_')[0] ?? '—'} sub="coût le plus élevé" />
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:12, marginBottom:24 }}>
@@ -80,12 +89,12 @@ export default function Costs() {
           ) : (
             <div style={{ height:220 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={byAgentArr} layout="vertical" margin={{ top:0, right:16, left:0, bottom:0 }}>
+                <BarChart data={byAgentArr.map(a => ({ ...a, today_cost: getCost(a, 'today') }))} layout="vertical" margin={{ top:0, right:16, left:0, bottom:0 }}>
                   <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" horizontal={false} />
                   <XAxis type="number" tick={{ fontFamily:'var(--font-mono)', fontSize:9, fill:'var(--text-secondary)' }} axisLine={false} tickLine={false} tickFormatter={v => `$${v.toFixed(3)}`} />
                   <YAxis type="category" dataKey="agent" tick={{ fontFamily:'var(--font-mono)', fontSize:9, fill:'var(--text-secondary)' }} axisLine={false} tickLine={false} width={150} />
                   <Tooltip content={<TT />} />
-                  <Bar dataKey="today" name="Coût" fill="var(--amber)" radius={1} />
+                  <Bar dataKey="today_cost" name="Coût" fill="var(--amber)" radius={1} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -115,15 +124,23 @@ export default function Costs() {
         <table style={{ width:'100%', borderCollapse:'collapse', fontFamily:'var(--font-mono)', fontSize:11 }}>
           <thead>
             <tr>
-              {['Agent','Modèle','Coût Auj.','Coût Mois','Total'].map(h => (
+              {['Agent','Modèle','Appels Auj.','Coût Auj.','Coût 7j','Coût Mois','Tokens In/Out (7j)'].map(h => (
                 <th key={h} style={{ textAlign:'left', padding:'5px 8px', fontSize:8, fontWeight:600, letterSpacing:'.12em', textTransform:'uppercase', color:'var(--text-secondary)', borderBottom:'1px solid var(--border)' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {byAgentArr.length === 0 ? (
-              <tr><td colSpan={5} style={{ padding:'16px 8px', color:'var(--text-secondary)', textAlign:'center' }}>Aucune donnée disponible</td></tr>
-            ) : byAgentArr.map(a => (
+              <tr><td colSpan={7} style={{ padding:'16px 8px', color:'var(--text-secondary)', textAlign:'center' }}>Aucune donnée disponible</td></tr>
+            ) : byAgentArr.map(a => {
+              const todayCost = getCost(a, 'today');
+              const weekCost  = getCost(a, 'week');
+              const monthCost = getCost(a, 'month');
+              const todayCalls = a.today?.calls ?? 0;
+              const weekIn    = a.week?.input_tokens ?? null;
+              const weekOut   = a.week?.output_tokens ?? null;
+              const fmtTokens = (n) => n == null ? 'N/A' : n >= 1000 ? `${(n/1000).toFixed(1)}k` : String(n);
+              return (
               <tr key={a.agent} style={{ borderBottom:'1px solid var(--border)' }}>
                 <td style={{ padding:'7px 8px', color:'var(--amber)' }}>{a.agent}</td>
                 <td style={{ padding:'7px 8px' }}>
@@ -131,11 +148,14 @@ export default function Costs() {
                     {shortModel(a.model)}
                   </span>
                 </td>
-                <td style={{ padding:'7px 8px', color: (a.today||0) > 0 ? 'var(--amber)' : 'var(--text-secondary)' }}>{fmtUSD(a.today||0)}</td>
-                <td style={{ padding:'7px 8px' }}>{fmtUSD(a.month||0)}</td>
-                <td style={{ padding:'7px 8px', color:'var(--text-secondary)' }}>{fmtUSD(a.total||0)}</td>
+                <td style={{ padding:'7px 8px', color:'var(--text-secondary)' }}>{todayCalls}</td>
+                <td style={{ padding:'7px 8px', color: todayCost > 0 ? 'var(--amber)' : 'var(--text-secondary)' }}>{fmtUSD(todayCost)}</td>
+                <td style={{ padding:'7px 8px' }}>{fmtUSD(weekCost)}</td>
+                <td style={{ padding:'7px 8px' }}>{fmtUSD(monthCost)}</td>
+                <td style={{ padding:'7px 8px', color:'var(--text-secondary)', fontSize:9 }}>{fmtTokens(weekIn)} / {fmtTokens(weekOut)}</td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

@@ -9,6 +9,7 @@
 import fs          from "fs";
 import path        from "path";
 import crypto      from "crypto";
+import { walletOnOpen, walletOnClose, loadWallet } from "../_shared/strategy_utils.js";
 
 const BASE_URL     = process.env.BINANCE_TESTNET_BASE_URL ?? "https://testnet.binance.vision";
 const API_KEY      = process.env.BINANCE_TESTNET_API_KEY;
@@ -217,6 +218,12 @@ export async function handler(ctx) {
           dailyPnl[today] = parseFloat(((dailyPnl[today] ?? 0) + pnlUSD).toFixed(2));
           writeJSON(pnlFile, dailyPnl);
 
+          // Wallet tracking — clôture
+          try {
+            const sid = pos.strategy_id;
+            if (sid) walletOnClose(sid, pos.value_usd, pnlUSD);
+          } catch (e) { console.log(`[TESTNET_EXECUTOR] walletOnClose: ${e.message}`); }
+
           ctx.log(
             `📊 CLOSE ${pos.symbol} ${exitReason} — ` +
             `exit=$${exitPrice} pnl=${pnlUSD >= 0 ? "+" : ""}$${pnlUSD.toFixed(2)} ` +
@@ -255,6 +262,9 @@ export async function handler(ctx) {
 
   for (const event of plans) {
     const plan = event.payload;
+
+    // Routing par execution_target — ignorer les orders non-testnet
+    if (plan.execution_target && plan.execution_target !== "testnet") continue;
 
     // Vérifications
     if (ks.state === "TRIPPED") break;
@@ -303,26 +313,34 @@ export async function handler(ctx) {
 
       // Enregistrer la position
       const pos = {
-        id:               `testnet_${plan.symbol}_${Date.now()}`,
-        symbol:           plan.symbol,
-        side:             plan.side,
-        strategy:         plan.strategy,
-        confidence:       plan.confidence,
+        id:                `testnet_${plan.symbol}_${Date.now()}`,
+        symbol:            plan.symbol,
+        side:              plan.side,
+        strategy_id:       plan.strategy_id ?? plan.strategy,
+        wallet_id:         plan.wallet_id ?? null,
+        execution_target:  plan.execution_target ?? "testnet",
+        confidence:        plan.confidence,
         qty,
-        entry_fill:       entryFill,
-        stop:             plan.setup?.stop ?? plan.stop,
-        tp:               plan.setup?.tp ?? plan.tp,
-        risk_reward:      plan.risk_reward,
-        risk_usd:         riskUSD,
-        value_usd:        parseFloat((entryFill * qty).toFixed(2)),
-        regime:           plan.regime ?? "unknown",
+        entry_fill:        entryFill,
+        stop:              plan.setup?.stop ?? plan.stop,
+        tp:                plan.setup?.tp ?? plan.tp,
+        risk_reward:       plan.risk_reward,
+        risk_usd:          riskUSD,
+        value_usd:         parseFloat((entryFill * qty).toFixed(2)),
+        regime:            plan.regime ?? "unknown",
         oco_order_list_id: oco.orderListId,
-        opened_at:        Date.now(),
-        status:           "open",
-        env:              "testnet",
+        opened_at:         Date.now(),
+        status:            "open",
+        env:               "testnet",
       };
 
       stillOpen.push(pos);
+
+      // Wallet tracking — ouverture
+      try {
+        const sid = pos.strategy_id;
+        if (sid) walletOnOpen(sid, pos.value_usd);
+      } catch (e) { ctx.log(`⚠️ walletOnOpen: ${e.message}`); }
 
       // Émettre snapshot
 	ctx.emit("trading.exec.position.snapshot", "exec.position.snapshot.v1",

@@ -149,7 +149,9 @@ export async function handler(ctx) {
           policy_decision_ref: entry.policy_event_id,
           symbol:              entry.plan.symbol,
           side:                entry.plan.side,
-          strategy_id:         entry.plan.strategy,
+          strategy_id:         entry.plan.strategy_id ?? entry.plan.strategy,
+          wallet_id:           entry.plan.wallet_id ?? null,
+          execution_target:    entry.plan.execution_target ?? "paper",
           variant_id:          entry.variant_id,
           experiment_id:       entry.experiment_id,
           setup: {

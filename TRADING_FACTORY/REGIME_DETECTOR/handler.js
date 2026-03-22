@@ -1,6 +1,6 @@
 /**
  * REGIME_DETECTOR — Handler
- * Détermine le régime de marché en croisant les features 1m/1h/4h.
+ * Détermine le régime de marché en croisant les features 5m/1h/4h.
  * Émet : trading.intel.regime
  * Pas de LLM. Logique de règles pure.
  *
@@ -18,20 +18,20 @@ const SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT"];
 
 // ─── Règles de détection ──────────────────────────────────────────────────
 
-function detectSymbolRegime(f1m, f1h, f4h) {
-  if (!f1m || !f1h || !f4h) return { regime: "UNKNOWN", confidence: 0, reasons: ["données manquantes"] };
+function detectSymbolRegime(f5m, f1h, f4h) {
+  if (!f5m || !f1h || !f4h) return { regime: "UNKNOWN", confidence: 0, reasons: ["données manquantes"] };
 
   const reasons = [];
   let score_up = 0, score_down = 0;
 
   // ── PANIC : prioritaire ───────────────────────────────────────────────
-  // RSI 1m < 20 + volume spike + prix sous BB lower 1h
+  // RSI 5m < 20 + volume spike + prix sous BB lower 1h
   if (
-    f1m.rsi_14 !== null && f1m.rsi_14 < 20 &&
-    f1m.volume_zscore !== null && f1m.volume_zscore > 2.5 &&
+    f5m.rsi_14 !== null && f5m.rsi_14 < 20 &&
+    f5m.volume_zscore !== null && f5m.volume_zscore > 2.5 &&
     f1h.bb_pct_b !== null && f1h.bb_pct_b < 0
   ) {
-    reasons.push(`PANIC: RSI_1m=${f1m.rsi_14} volZ_1m=${f1m.volume_zscore} BB_1h=${f1h.bb_pct_b}`);
+    reasons.push(`PANIC: RSI_5m=${f5m.rsi_14} volZ_5m=${f5m.volume_zscore} BB_1h=${f1h.bb_pct_b}`);
     return { regime: "PANIC", confidence: 0.85, reasons };
   }
 
@@ -40,9 +40,9 @@ function detectSymbolRegime(f1m, f1h, f4h) {
   if (
     f1h.rsi_14 !== null && f1h.rsi_14 > 80 &&
     f4h.rsi_14 !== null && f4h.rsi_14 > 75 &&
-    f1m.volume_zscore !== null && f1m.volume_zscore > 2.0
+    f5m.volume_zscore !== null && f5m.volume_zscore > 2.0
   ) {
-    reasons.push(`EUPHORIA: RSI_1h=${f1h.rsi_14} RSI_4h=${f4h.rsi_14} volZ=${f1m.volume_zscore}`);
+    reasons.push(`EUPHORIA: RSI_1h=${f1h.rsi_14} RSI_4h=${f4h.rsi_14} volZ=${f5m.volume_zscore}`);
     return { regime: "EUPHORIA", confidence: 0.80, reasons };
   }
 
@@ -121,11 +121,11 @@ function detectSymbolRegime(f1m, f1h, f4h) {
   }
 
   // ── VOLATILE : ATR élevé sans direction claire ────────────────────────
-  if (dominance < 0.6 && f1m.volume_zscore !== null && f1m.volume_zscore > 1.5) {
+  if (dominance < 0.6 && f5m.volume_zscore !== null && f5m.volume_zscore > 1.5) {
     return {
       regime:     "VOLATILE",
       confidence: 0.55,
-      reasons:    [...reasons, `volatile: dominance=${dominance.toFixed(2)} volZ=${f1m.volume_zscore}`],
+      reasons:    [...reasons, `volatile: dominance=${dominance.toFixed(2)} volZ=${f5m.volume_zscore}`],
     };
   }
 
@@ -255,16 +255,16 @@ export async function handler(ctx) {
       return filtered.length > 0 ? filtered[filtered.length - 1].payload : null;
     };
 
-    const f1m = get("1m");
+    const f5m = get("5m");
     const f1h = get("1h");
     const f4h = get("4h");
 
-    if (!f1m && !f1h && !f4h) {
+    if (!f5m && !f1h && !f4h) {
       ctx.log(`⚠️ ${symbol}: aucune feature disponible — skip`);
       continue;
     }
 
-    const result = detectSymbolRegime(f1m, f1h, f4h);
+    const result = detectSymbolRegime(f5m, f1h, f4h);
     symbolRegimes.push({ symbol, ...result });
     bySymbol[symbol] = result;
 

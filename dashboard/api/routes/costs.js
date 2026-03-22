@@ -39,23 +39,56 @@ router.get("/summary", (req, res) => {
     return res.json(agg);
   }
 
-  // Fallback lecture directe JSONL
-  const entries = readJSONL(`${STATE_DIR}/learning/token_costs.jsonl`);
+  // Fallback lecture directe JSONL — merge Trading + POLY_FACTORY costs
+  const tradingEntries = readJSONL(`${STATE_DIR}/learning/token_costs.jsonl`);
+  const polyPath = process.env.POLY_BASE_PATH ?? "/home/openclawadmin/openclaw/workspace/POLY_FACTORY/state";
+  const polyEntries = readJSONL(`${polyPath}/llm/token_costs.jsonl`);
+  const entries = [...tradingEntries, ...polyEntries];
   const today   = new Date().toISOString().slice(0, 10);
   const month   = today.slice(0, 7);
+  const weekAgo = new Date(now - 7 * 86400000).toISOString().slice(0, 10);
+
+  const init = () => ({
+    today:  { calls: 0, input_tokens: 0, output_tokens: 0, cost: 0 },
+    week:   { calls: 0, input_tokens: 0, output_tokens: 0, cost: 0 },
+    month:  { calls: 0, input_tokens: 0, output_tokens: 0, cost: 0 },
+    total:  0,
+    model:  null,
+  });
 
   const byAgent = {};
   for (const e of entries) {
-    if (!byAgent[e.agent]) byAgent[e.agent] = { today: 0, month: 0, total: 0, model: e.model };
-    byAgent[e.agent].total += e.cost_usd;
-    if (e.date === today)  byAgent[e.agent].today += e.cost_usd;
-    if (e.date?.startsWith(month)) byAgent[e.agent].month += e.cost_usd;
+    if (!byAgent[e.agent]) byAgent[e.agent] = init();
+    const a = byAgent[e.agent];
+    a.model = e.model ?? a.model;
+    a.total += e.cost_usd ?? 0;
+    const inp = e.input ?? 0;
+    const out = e.output ?? 0;
+    const cost = e.cost_usd ?? 0;
+    if (e.date === today) {
+      a.today.calls++; a.today.input_tokens += inp; a.today.output_tokens += out; a.today.cost += cost;
+    }
+    if (e.date >= weekAgo) {
+      a.week.calls++; a.week.input_tokens += inp; a.week.output_tokens += out; a.week.cost += cost;
+    }
+    if (e.date?.startsWith(month)) {
+      a.month.calls++; a.month.input_tokens += inp; a.month.output_tokens += out; a.month.cost += cost;
+    }
   }
 
-  const totalToday = Object.values(byAgent).reduce((s, a) => s + a.today, 0);
-  const totalMonth = Object.values(byAgent).reduce((s, a) => s + a.month, 0);
+  // Round all values
+  for (const a of Object.values(byAgent)) {
+    for (const period of [a.today, a.week, a.month]) {
+      period.cost = parseFloat(period.cost.toFixed(6));
+    }
+    a.total = parseFloat(a.total.toFixed(6));
+  }
 
-  summaryCache = { ts: now, today: totalToday, month: totalMonth, by_agent: byAgent };
+  const totalToday = Object.values(byAgent).reduce((s, a) => s + a.today.cost, 0);
+  const totalWeek  = Object.values(byAgent).reduce((s, a) => s + a.week.cost, 0);
+  const totalMonth = Object.values(byAgent).reduce((s, a) => s + a.month.cost, 0);
+
+  summaryCache = { ts: now, today: totalToday, week: totalWeek, month: totalMonth, by_agent: byAgent };
   summaryCacheTs = now;
   res.json(summaryCache);
 });

@@ -4,7 +4,7 @@ set -euo pipefail
 CONTAINER="openclaw-openclaw-gateway-1"
 STATE_DIR="/home/node/.openclaw/workspace/state/trading"
 WORKSPACE_DIR="/home/node/.openclaw/workspace"
-SKILL_PATH="${WORKSPACE_DIR}/skills_custom/trading/SYSTEM_WATCHDOG/index.js"
+SKILL_PATH="${WORKSPACE_DIR}/TRADING_FACTORY/SYSTEM_WATCHDOG/index.js"
 RUN_ID="SYSTEM_WATCHDOG-$(date +%s%3N)"
 PAYLOAD_PATH="${STATE_DIR}/runs/${RUN_ID}.json"
 

@@ -233,7 +233,7 @@ export async function handler(ctx) {
 
   // ── 1. Pollers & container ────────────────────────────────────────────────
   const tradingOk   = isProcessRunning("trading/poller.js");
-  const contentOk   = isProcessRunning("skills_custom/poller.js");
+  const contentOk   = isProcessRunning("CONTENT_FACTORY/poller.js");
   const containerOk = isProcessRunning("openclaw-gateway");
 
   if (!tradingOk)   addIssue("trading_poller_down", "CRIT", "trading/poller.js ne tourne PAS",      "Tous les 22 agents trading sont a l'arret");

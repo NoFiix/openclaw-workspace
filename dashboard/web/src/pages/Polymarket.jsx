@@ -425,6 +425,7 @@ export default function Polymarket() {
           value={`${openPos}`}
           color={openPos >= 5 ? 'amber' : openPos > 0 ? 'blue' : 'green'}
           sub={`${totalCommitted.toFixed(0)}$ engagé · max 6/stratégie`}
+          tooltip="Capital actuellement alloué dans des positions ouvertes. Ces positions se résolvent à la clôture du marché — pas de TP/SL."
         />
         <MetricCard
           label="Stratégies Actives"
@@ -707,8 +708,8 @@ export default function Polymarket() {
             color={(health?.dead_letter_count ?? 0) > 0 ? 'amber' : ''}
           />
           <RowInfo
-            label="Events en attente"
-            value={health?.pending_events_count ?? 0}
+            label="Events bus (pending)"
+            value={health?.bus_pending_real ?? 0}
           />
         </Card>
 
@@ -779,9 +780,9 @@ export default function Polymarket() {
         {/* Event Bus */}
         <Card title="Event Bus">
           <RowInfo
-            label="Events en attente"
-            value={health?.pending_events_count ?? 0}
-            color={(health?.pending_events_count ?? 0) > 50 ? 'amber' : 'green'}
+            label="Events bus (pending)"
+            value={health?.bus_pending_real ?? 0}
+            color={(health?.bus_pending_real ?? 0) > 50 ? 'amber' : 'green'}
           />
           <RowInfo
             label="Dead letters"

@@ -112,14 +112,15 @@ class TestIdempotenceReplay:
         events = bus.poll("consumer_1")
         assert len(events) == 0
 
-    def test_acked_event_not_returned_to_any_consumer(self, bus):
-        """A globally acked event must be invisible to ALL consumers."""
+    def test_acked_event_visible_to_other_consumers(self, bus):
+        """Pub/sub: an event acked by one consumer must remain visible to others."""
         env = bus.publish("trade:signal", "TEST", {"k": 1})
         bus.ack("consumer_1", env["event_id"])
 
+        # Other consumers should still see it (per-consumer filtering)
         for consumer_id in ("consumer_2", "consumer_3", "consumer_new"):
             events = bus.poll(consumer_id)
-            assert len(events) == 0, f"{consumer_id} still saw acked event"
+            assert len(events) == 1, f"{consumer_id} should see event acked by consumer_1"
 
     def test_replay_acked_event_in_pending_ignored(self, bus):
         """Re-injecting an already-acked envelope into PENDING_FILE must be ignored."""
@@ -132,15 +133,19 @@ class TestIdempotenceReplay:
         events = bus.poll("consumer_1")
         assert len(events) == 0
 
-    def test_replay_acked_event_ignored_by_all_consumers(self, bus):
-        """Re-injected acked event must be invisible to any consumer."""
+    def test_replay_acked_event_ignored_by_same_consumer(self, bus):
+        """Re-injected acked event must be invisible to the consumer that acked it."""
         env = bus.publish("trade:signal", "TEST", {"k": 99})
         bus.ack("consumer_1", env["event_id"])
         _inject_raw(bus, env)
 
-        for consumer_id in ("consumer_1", "consumer_2", "consumer_fresh"):
-            events = bus.poll(consumer_id)
-            assert len(events) == 0, f"{consumer_id} saw replayed acked event"
+        # consumer_1 acked it — should not see it again
+        events = bus.poll("consumer_1")
+        assert len(events) == 0, "consumer_1 saw replayed acked event"
+
+        # Other consumers should see it (pub/sub)
+        events2 = bus.poll("consumer_fresh")
+        assert len(events2) >= 1, "consumer_fresh should see event"
 
     def test_replay_preserves_unacked_events(self, bus):
         """Re-injected acked event must not suppress unacked events in the queue."""
@@ -157,15 +162,19 @@ class TestIdempotenceReplay:
         assert events[0]["payload"]["role"] == "new"
 
     def test_acked_ids_persist_across_restart(self, tmp_path):
-        """Acked event_ids must survive a PolyEventBus restart (loaded from file)."""
+        """Per-consumer acks survive restart: same consumer blocked, others not."""
         bus1 = PolyEventBus(base_path=str(tmp_path))
         env = bus1.publish("trade:signal", "TEST", {"k": 1})
         bus1.ack("consumer_1", env["event_id"])
 
-        # New instance: must reload acked_ids from processed_events.jsonl
+        # New instance: consumer_1 should still be blocked (per-consumer persistence)
         bus2 = PolyEventBus(base_path=str(tmp_path))
-        events = bus2.poll("consumer_2")
-        assert len(events) == 0
+        events_c1 = bus2.poll("consumer_1")
+        assert len(events_c1) == 0, "consumer_1 should not see its own acked event after restart"
+
+        # consumer_2 should see the event (pub/sub)
+        events_c2 = bus2.poll("consumer_2")
+        assert len(events_c2) == 1, "consumer_2 should see event acked by consumer_1"
 
 
 # ---------------------------------------------------------------------------
@@ -238,12 +247,13 @@ class TestDeadLetter:
         dead = bus.get_dead_letters()
         assert len(dead) == 0
 
-    def test_dead_lettered_event_not_returned_by_poll(self, bus):
-        """After dead-lettering, the event must not be visible via poll."""
+    def test_dead_lettered_event_in_dead_letter_file(self, bus):
+        """After dead-lettering, the event is in the dead letter file."""
         self._drive_to_dead_letter(bus)
 
-        events = bus.poll("consumer_1", topics=["trade:signal"])
-        assert len(events) == 0
+        dead = bus.get_dead_letters()
+        assert len(dead) >= 1
+        assert dead[-1]["retry_count"] >= MAX_RETRIES
 
     def test_multiple_events_dead_letter_independently(self, bus):
         """Two separate events can each be driven to dead_letter independently."""

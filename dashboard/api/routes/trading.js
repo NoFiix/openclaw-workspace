@@ -186,6 +186,88 @@ router.get("/performance", (req, res) => {
   res.json(perfCache);
 });
 
+// ── /strategies — multi-strategy wallets + ranking ────────────────────────────
+let stratCache = null; let stratCacheTs = 0;
+router.get("/strategies", (req, res) => {
+  const now = Date.now();
+  if (stratCache && now - stratCacheTs < PERF_TTL) return res.json(stratCache);
+
+  const registry = readJSON(`${STATE_DIR}/configs/strategies_registry.json`) ?? {};
+  const ranking  = readJSON(`${STATE_DIR}/learning/strategy_ranking.json`);
+
+  // Load ALL open positions from all sources
+  const posTestnet  = readJSON(`${STATE_DIR}/exec/positions_testnet.json`) ?? [];
+  const posPaper    = readJSON(`${STATE_DIR}/exec/positions.json`) ?? [];
+  const allPositions = [...posTestnet, ...posPaper];
+
+  // Also load per-strategy position files
+  for (const [id, cfg] of Object.entries(registry)) {
+    const stratPos = readJSON(join(STATE_DIR, cfg.state_dir ?? `strategies/${id}`, "positions.json")) ?? [];
+    for (const p of stratPos) {
+      if (p.status === "open" && !allPositions.find(x => x.id === p.id)) {
+        allPositions.push(p);
+      }
+    }
+  }
+
+  const strategies = [];
+
+  for (const [id, cfg] of Object.entries(registry)) {
+    const wallet  = readJSON(join(STATE_DIR, cfg.state_dir ?? `strategies/${id}`, "wallet.json"));
+    const metrics = readJSON(join(STATE_DIR, cfg.state_dir ?? `strategies/${id}`, "metrics.json"));
+    const rankData = ranking?.strategies?.[id];
+
+    // Find open positions for this strategy
+    const stratPositions = allPositions.filter(p =>
+      (p.strategy_id === id || p.strategy === id) && p.status === "open"
+    );
+    const committed = stratPositions.reduce((sum, p) => sum + (p.value_usd ?? 0), 0);
+    const walletCash = wallet?.cash ?? cfg.initial_capital ?? 1000;
+    const effectiveCash = parseFloat((walletCash - committed).toFixed(2));
+
+    strategies.push({
+      strategy_id:        id,
+      strategy_label:     cfg.strategy_label ?? id,
+      enabled:            cfg.enabled ?? false,
+      lifecycle_status:   cfg.lifecycle_status ?? "unknown",
+      execution_target:   cfg.execution_target ?? "paper",
+      wallet_mode:        cfg.wallet_mode ?? "virtual",
+      initial_capital:    wallet?.initial_capital ?? cfg.initial_capital ?? 1000,
+      cash:               walletCash,
+      effective_cash:     effectiveCash,
+      equity:             wallet?.equity ?? cfg.initial_capital ?? 1000,
+      allocated:          wallet?.allocated ?? 0,
+      committed:          parseFloat(committed.toFixed(2)),
+      open_positions_count: stratPositions.length,
+      open_positions:     stratPositions.map(p => ({
+        id: p.id, symbol: p.symbol, side: p.side,
+        value_usd: p.value_usd, entry_fill: p.entry_fill,
+        opened_at: p.opened_at,
+      })),
+      realized_pnl:     wallet?.realized_pnl ?? 0,
+      roi_pct:          wallet?.roi_pct ?? 0,
+      max_drawdown:     wallet?.max_drawdown ?? 0,
+      trade_count:      wallet?.trade_count ?? metrics?.trade_count ?? 0,
+      win_count:        wallet?.win_count ?? metrics?.win_count ?? 0,
+      win_rate_pct:     metrics?.win_rate_pct ?? null,
+      profit_factor:    metrics?.profit_factor ?? null,
+      status:           wallet?.status ?? "unknown",
+      ranking_status:   rankData?.status ?? "insufficient_data",
+      score_global:     rankData?.scores?.global ?? null,
+      updated_at:       wallet?.updated_at ?? null,
+    });
+  }
+
+  const candidates = readJSON(`${STATE_DIR}/configs/candidates_pending.json`);
+  const pendingCount = candidates?.candidates
+    ? Object.values(candidates.candidates).filter(c => c.status === "pending_review").length
+    : 0;
+
+  stratCache = { ts: now, count: strategies.length, strategies, pending_candidates: pendingCount };
+  stratCacheTs = now;
+  res.json(stratCache);
+});
+
 // ── /history — courbe PnL 30 jours (fallback sur ledger) ────────────────────
 router.get("/history", (req, res) => {
   const trades = readJSONL(`${STATE_DIR}/bus/trading_exec_trade_ledger.jsonl`)

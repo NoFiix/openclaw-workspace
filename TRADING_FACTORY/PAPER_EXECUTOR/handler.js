@@ -8,6 +8,7 @@
 
 import fs   from "fs";
 import path from "path";
+import { walletOnOpen, walletOnClose, loadWallet } from "../_shared/strategy_utils.js";
 
 const SLIPPAGE_BPS = 10; // 0.10% de slippage simulé
 
@@ -25,7 +26,7 @@ function writeJSON(filePath, data) {
 
 function getCurrentPrice(bus, symbol) {
   const { events } = bus.readSince("trading.intel.market.features", 0, 5000);
-  const filtered   = events.filter(e => e.payload?.symbol === symbol && e.payload?.timeframe === "1m");
+  const filtered   = events.filter(e => e.payload?.symbol === symbol && e.payload?.timeframe === "5m");
   return filtered.length > 0 ? filtered[filtered.length - 1].payload.price : null;
 }
 
@@ -40,23 +41,25 @@ function applySlippage(price, side) {
 
 function openPosition(plan, fillPrice) {
   return {
-    id:            `pos_${plan.symbol}_${Date.now()}`,
-    proposal_ref:  plan.proposal_ref,
-    symbol:        plan.symbol,
-    side:          plan.side,
-    strategy:      plan.strategy,
-    qty:           plan.setup.qty,
-    entry_target:  plan.setup.entry,
-    entry_fill:    fillPrice,
-    stop:          plan.setup.stop,
-    tp:            plan.setup.tp,
-    risk_reward:   plan.setup.risk_reward,
-    value_usd:     parseFloat((plan.setup.qty * fillPrice).toFixed(2)),
-    risk_usd:      plan.setup.risk_usd,
-    regime:        plan.regime,
-    opened_at:     Date.now(),
-    status:        "open",
-    env:           plan.env ?? "paper",
+    id:               `pos_${plan.symbol}_${Date.now()}`,
+    proposal_ref:     plan.proposal_ref,
+    symbol:           plan.symbol,
+    side:             plan.side,
+    strategy_id:      plan.strategy_id ?? plan.strategy,
+    wallet_id:        plan.wallet_id ?? null,
+    execution_target: plan.execution_target ?? "paper",
+    qty:              plan.setup.qty,
+    entry_target:     plan.setup.entry,
+    entry_fill:       fillPrice,
+    stop:             plan.setup.stop,
+    tp:               plan.setup.tp,
+    risk_reward:      plan.setup.risk_reward,
+    value_usd:        parseFloat((plan.setup.qty * fillPrice).toFixed(2)),
+    risk_usd:         plan.setup.risk_usd,
+    regime:           plan.regime,
+    opened_at:        Date.now(),
+    status:           "open",
+    env:              plan.env ?? "paper",
   };
 }
 
@@ -99,6 +102,12 @@ function checkExits(positions, bus, ctx) {
       };
 
       closed.push(closedPos);
+
+      // Wallet tracking — clôture
+      try {
+        const sid = pos.strategy_id;
+        if (sid) walletOnClose(sid, pos.value_usd, closedPos.pnl_usd);
+      } catch (e) { console.log(`[PAPER_EXECUTOR] walletOnClose: ${e.message}`); }
 
       ctx.emit(
         "trading.exec.trade.ledger",
@@ -144,19 +153,23 @@ export async function handler(ctx) {
     dailyPnl[today] = parseFloat((dailyPnl[today] + c.pnl_usd).toFixed(2));
   }
 
-  // ── 2. Traiter les nouveaux order.plan ────────────────────────────────
-  const cursor = ctx.state.cursors?.order_plans ?? 0;
+  // ── 2. Traiter les ordres approuvés (via ORCHESTRATOR + POLICY_ENGINE) ──
+  const cursor = ctx.state.cursors?.order_submit ?? 0;
   const { events: plans, nextCursor } =
-    ctx.bus.readSince("trading.strategy.order.plan", cursor, 20);
+    ctx.bus.readSince("trading.exec.order.submit", cursor, 20);
 
   let opened = 0;
 
   for (const event of plans) {
     const plan  = event.payload;
+
+    // Routing par execution_target — ignorer les orders non-paper
+    if (plan.execution_target && plan.execution_target !== "paper") continue;
+
     const price = getCurrentPrice(ctx.bus, plan.symbol);
 
     if (!price) {
-      ctx.log(`⚠️ ${plan.symbol}: prix non disponible, order.plan ignoré`);
+      ctx.log(`⚠️ ${plan.symbol}: prix non disponible, order ignoré`);
       continue;
     }
 
@@ -170,10 +183,27 @@ export async function handler(ctx) {
       continue;
     }
 
+    // Check wallet status before opening — skip if suspended or insufficient cash
+    const sid = plan.strategy_id ?? plan.strategy;
+    if (sid) {
+      try {
+        const wallet = loadWallet(sid);
+        if (wallet.status === "suspended") {
+          ctx.log(`⏸️ ${plan.symbol}: wallet ${sid} suspended — skip`);
+          continue;
+        }
+      } catch {}
+    }
+
     const fillPrice = applySlippage(price, plan.side);
     const position  = openPosition(plan, fillPrice);
     still.push(position);
     opened++;
+
+    // Wallet tracking — ouverture (only after confirmed position open)
+    try {
+      if (sid) walletOnOpen(sid, position.value_usd);
+    } catch (e) { ctx.log(`⚠️ walletOnOpen: ${e.message}`); }
 
     ctx.log(
       `📈 ${plan.symbol} ${plan.side} OUVERT ` +
@@ -187,7 +217,7 @@ export async function handler(ctx) {
   writeJSON(posFile, still);
   writeJSON(pnlFile, dailyPnl);
 
-  ctx.state.cursors = { ...ctx.state.cursors, order_plans: nextCursor };
+  ctx.state.cursors = { ...ctx.state.cursors, order_submit: nextCursor };
 
   // ── 4. Snapshot positions ─────────────────────────────────────────────
   ctx.emit(

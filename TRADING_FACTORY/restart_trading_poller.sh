@@ -1,6 +1,6 @@
 #!/bin/bash
 CONTAINER="openclaw-openclaw-gateway-1"
-POLLER_PATH="/home/node/.openclaw/workspace/skills_custom/trading/poller.js"
+POLLER_PATH="/home/node/.openclaw/workspace/TRADING_FACTORY/poller.js"
 
 echo "[restart_poller] 🔍 Pollers actifs avant restart :"
 docker exec $CONTAINER ps aux | grep "trading/poller" | grep -v grep

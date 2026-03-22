@@ -26,6 +26,7 @@ export const api = {
   tradingTrades:   () => apiFetch('/trading/trades'),
   tradingPerf:     () => apiFetch('/trading/performance'),
   tradingHistory:  () => apiFetch('/trading/history'),
+  tradingStrategies: () => apiFetch('/trading/strategies'),
   content: () => apiFetch('/content/summary'),
   storage: () => apiFetch('/storage/summary'),
   docs:    () => apiFetch('/docs'),

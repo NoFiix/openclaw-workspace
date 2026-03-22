@@ -242,7 +242,12 @@ async function writePost(article, bodyText) {
       res.on("data", c => raw += c);
       res.on("end", () => {
         try {
-          const text = JSON.parse(raw).content?.[0]?.text?.trim() || "";
+          const json = JSON.parse(raw);
+          if (json.error) {
+            reject(new Error(`API ${res.statusCode}: ${json.error.message || JSON.stringify(json.error)}`));
+            return;
+          }
+          const text = json.content?.[0]?.text?.trim() || "";
           if (!text) throw new Error("Réponse vide");
           resolve(text);
         } catch (e) { reject(new Error(`Erreur Sonnet: ${e.message}`)); }

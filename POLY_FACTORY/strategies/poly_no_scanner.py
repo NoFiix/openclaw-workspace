@@ -47,7 +47,7 @@ PLATFORM               = "polymarket"
 
 # Strategy parameters
 MIN_NO_ASK             = 0.80    # screen: NO must cost ≥ 80 cents (YES cheap)
-EDGE_THRESHOLD         = 0.03    # min (prob_no - no_ask) to emit a signal
+EDGE_THRESHOLD         = 0.08    # min (prob_no - no_ask) to emit a signal
 MIN_LLM_PROBABILITY_NO = 0.80    # Haiku must estimate P(NO) ≥ 80%
 MAX_AMBIGUITY_SCORE    = 3       # reject markets with ambiguity_score >= this
 SUGGESTED_SIZE_EUR     = 20.0    # smaller size — conservative NO bet

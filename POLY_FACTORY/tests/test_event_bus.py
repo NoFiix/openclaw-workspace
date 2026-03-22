@@ -70,14 +70,11 @@ class TestAck:
         env = bus.publish("trade:signal", "TEST", {"k": 1})
         bus.ack("consumer_1", env["event_id"])
 
-        # consumer_2 has its own idempotence set — it should still see the event
-        # Note: within the same bus instance, _acked_ids is global, so this tests
-        # the in-memory behavior. In production, each agent has its own instance.
-        # This test documents the DESIRED pub/sub behavior.
+        # consumer_2 has its own idempotence set — it should still see the event.
+        # poll() now filters by per-consumer _consumer_processed only (not global
+        # _acked_ids), so consumer_2 correctly sees an event acked by consumer_1.
         events = bus.poll("consumer_2")
-        # Within same instance, _acked_ids still hides it (known limitation).
-        # The critical fix is that compact() no longer removes it from disk.
-        assert len(events) == 0  # same-instance global filter (acceptable)
+        assert len(events) == 1  # pub/sub: visible to other consumers
 
 
 class TestIdempotence:

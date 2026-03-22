@@ -50,15 +50,17 @@ export default function Trading() {
   const [filterAsset,    setFilterAsset]    = useState('all');
   const [filterResult,   setFilterResult]   = useState('all');
 
-  const fetchLive    = useCallback(() => api.trading(),        []);
-  const fetchPerf    = useCallback(() => api.tradingPerf(),    []);
-  const fetchTrades  = useCallback(() => api.tradingTrades(),  []);
-  const fetchHistory = useCallback(() => api.tradingHistory(), []);
+  const fetchLive    = useCallback(() => api.trading(),            []);
+  const fetchPerf    = useCallback(() => api.tradingPerf(),        []);
+  const fetchTrades  = useCallback(() => api.tradingTrades(),      []);
+  const fetchHistory = useCallback(() => api.tradingHistory(),     []);
+  const fetchStrats  = useCallback(() => api.tradingStrategies(),  []);
 
   const { data: live,    loading: lLive,   error: eLive,   refresh: rLive, lastUpdated } = useApiData(fetchLive,    20000);
   const { data: perf,    loading: lPerf                                                 } = useApiData(fetchPerf,    60000);
   const { data: tData,   loading: lTrades                                               } = useApiData(fetchTrades,  60000);
   const { data: history                                                                  } = useApiData(fetchHistory, 120000);
+  const { data: strats                                                                   } = useApiData(fetchStrats,  60000);
 
   if (lLive && !live) return <LoadingState text="Chargement trading..." />;
   if (eLive && !live) return <ErrorState message={eLive} onRetry={rLive} />;
@@ -205,6 +207,56 @@ export default function Trading() {
           {' · '}PnL jour: <span style={{ color: (live?.pnl_today ?? 0) >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtUSD(live?.pnl_today ?? 0)}</span>
         </span>
       </div>
+
+      {/* ── STRATEGY WALLETS ── */}
+      {strats?.strategies?.length > 0 && (<>
+        <SectionTitle>Stratégies Multi-Wallet</SectionTitle>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12, marginBottom: 24 }}>
+          {strats.strategies.map(s => {
+            const pnlColor = (s.realized_pnl ?? 0) >= 0 ? 'var(--green)' : 'var(--red)';
+            const statusColor = s.enabled ? 'var(--green)' : s.lifecycle_status === 'paper_ready' ? 'var(--amber)' : 'var(--text-secondary)';
+            const wr = s.trade_count > 0 && s.win_count != null ? ((s.win_count / s.trade_count) * 100).toFixed(1) : null;
+            return (
+              <Card key={s.strategy_id} title={s.strategy_label || s.strategy_id}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <Badge color={s.enabled ? 'green' : s.lifecycle_status === 'paper_ready' ? 'amber' : 'grey'}>
+                    {s.lifecycle_status ?? 'unknown'}
+                  </Badge>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-secondary)' }}>
+                    {s.execution_target ?? 'paper'}
+                  </span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontFamily: 'var(--font-mono)', fontSize: 10 }}>
+                  <div><span style={{ color: 'var(--text-secondary)' }}>Capital</span><br/><span style={{ fontSize: 13, fontWeight: 700 }}>{fmtUSD(s.initial_capital)}</span></div>
+                  <div><span style={{ color: 'var(--text-secondary)' }}>Disponible</span><br/><span style={{ fontSize: 13, fontWeight: 700, color: (s.effective_cash ?? s.cash) < s.initial_capital * 0.1 ? 'var(--red)' : 'var(--text-primary)' }}>{fmtUSD(s.effective_cash ?? s.cash)}</span></div>
+                  <div><span style={{ color: 'var(--text-secondary)' }}>Engagé</span><br/><span style={{ color: (s.committed ?? 0) > 0 ? 'var(--amber)' : 'var(--text-secondary)' }}>{fmtUSD(s.committed ?? 0)}</span></div>
+                  <div><span style={{ color: 'var(--text-secondary)' }}>Positions</span><br/><span style={{ color: (s.open_positions_count ?? 0) > 0 ? 'var(--amber)' : 'var(--text-secondary)' }}>{s.open_positions_count ?? 0}</span></div>
+                  <div><span style={{ color: 'var(--text-secondary)' }}>PnL</span><br/><span style={{ color: pnlColor }}>{fmtUSD(s.realized_pnl)}</span></div>
+                  <div><span style={{ color: 'var(--text-secondary)' }}>ROI</span><br/><span style={{ color: pnlColor }}>{fmtPct(s.roi_pct)}</span></div>
+                  <div><span style={{ color: 'var(--text-secondary)' }}>Trades</span><br/>{s.trade_count ?? 0}</div>
+                  <div><span style={{ color: 'var(--text-secondary)' }}>Win Rate</span><br/>{wr != null ? `${wr}%` : 'N/A'}</div>
+                </div>
+                {(s.open_positions ?? []).length > 0 && (
+                  <div style={{ marginTop: 8, padding: '6px 8px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius)', fontFamily: 'var(--font-mono)', fontSize: 9 }}>
+                    {s.open_positions.map(p => (
+                      <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
+                        <span style={{ color: 'var(--amber)' }}>{p.symbol} {p.side}</span>
+                        <span style={{ color: 'var(--text-secondary)' }}>{fmtUSD(p.value_usd)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {s.status === 'suspended' && <div style={{ marginTop: 8, padding: '4px 8px', background: 'var(--red-glow)', borderRadius: 'var(--radius)', fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--red)' }}>SUSPENDU — circuit breaker</div>}
+              </Card>
+            );
+          })}
+        </div>
+        {strats.pending_candidates > 0 && (
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--amber)', marginBottom: 16 }}>
+            {strats.pending_candidates} candidate(s) en attente de validation
+          </div>
+        )}
+      </>)}
 
       {/* ── CAPITAL & SIZING ── */}
       <SectionTitle>Capital & Sizing</SectionTitle>

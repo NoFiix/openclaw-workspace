@@ -183,29 +183,42 @@ router.get("/live", (req, res) => {
   let pnl_today              = 0;
   const active_strategies    = [];
 
+  // P&L réalisé = uniquement trades sur marchés RÉSOLUS.
+  // acc.pnl.total dans les account files inclut le coût des positions ouvertes
+  // comme si c'était une perte — ce n'est PAS un P&L réalisé.
+  // On calcule le P&L réalisé depuis les trades clôturés uniquement.
+  const closedTrades = allTrades.filter(t => t.pnl_eur != null);
+  const realizedPnlByStrategy = {};
+  for (const t of closedTrades) {
+    const sn = t.strategy ?? "unknown";
+    realizedPnlByStrategy[sn] = (realizedPnlByStrategy[sn] ?? 0) + (t.pnl_eur ?? 0);
+  }
+
   for (const name of strategyNames) {
     const acc     = accounts[name];
     const initial = acc?.capital?.initial   ?? INITIAL_CAPITAL;
-    const current = acc?.capital?.current   ?? INITIAL_CAPITAL;
-    const avail   = acc?.capital?.available ?? current;
-    const pnl     = acc?.pnl?.total        ?? 0;
-    const dayPnl  = acc?.pnl?.daily        ?? 0;
     const stPos   = positionsByStrategy[name] ?? { count: 0, committed: 0 };
+    const committed = stPos.committed;
+    // Capital disponible = initial - engagé dans positions ouvertes
+    const avail   = parseFloat((initial - committed).toFixed(2));
+    // P&L réalisé = uniquement trades résolus (pnl_eur non null dans le ledger)
+    const realizedPnl = realizedPnlByStrategy[name] ?? 0;
+    const dayPnl  = acc?.pnl?.daily        ?? 0;
     total_capital_deployed  += initial;
     total_capital_available += avail;
-    total_pnl_paper        += pnl;
+    total_pnl_paper        += realizedPnl;
     pnl_today              += dayPnl;
     active_strategies.push({
       name,
       status:              acc?.status ?? "paper_testing",
-      capital:             parseFloat(current.toFixed(2)),
+      capital:             parseFloat(initial.toFixed(2)),
       capital_initial:     parseFloat(initial.toFixed(2)),
       capital_available:   parseFloat(avail.toFixed(2)),
-      capital_committed:   parseFloat(stPos.committed.toFixed(2)),
-      capital_engaged_pct: current > 0 ? parseFloat((stPos.committed / current * 100).toFixed(2)) : null,
-      pnl_eur:             parseFloat(pnl.toFixed(2)),
+      capital_committed:   parseFloat(committed.toFixed(2)),
+      capital_engaged_pct: initial > 0 ? parseFloat((committed / initial * 100).toFixed(2)) : null,
+      pnl_eur:             parseFloat(realizedPnl.toFixed(2)),
       pnl_daily:           parseFloat(dayPnl.toFixed(2)),
-      roi_pct:             initial > 0 ? parseFloat((pnl / initial * 100).toFixed(2)) : null,
+      roi_pct:             initial > 0 ? parseFloat((realizedPnl / initial * 100).toFixed(2)) : null,
       positions_open:      stPos.count,
       positions_limit:     POSITIONS_LIMIT_PER_STRATEGY,
     });
@@ -307,6 +320,13 @@ router.get("/strategies", (req, res) => {
     ? Object.keys(registryStrategies)
     : KNOWN_STRATEGIES;
 
+  // P&L réalisé par stratégie (uniquement trades résolus)
+  const realizedByStrat = {};
+  for (const t of allTrades.filter(t => t.pnl_eur != null)) {
+    const sn = t.strategy ?? "unknown";
+    realizedByStrat[sn] = (realizedByStrat[sn] ?? 0) + (t.pnl_eur ?? 0);
+  }
+
   const strategies = strategyNames.map(name => {
     const acc     = accounts[name];
     const regData = registryStrategies[name] ?? {};
@@ -314,14 +334,13 @@ router.get("/strategies", (req, res) => {
     const { win_rate, sharpe, max_drawdown } = computeMetrics(trades);
 
     const initial     = acc?.capital?.initial   ?? INITIAL_CAPITAL;
-    const current     = acc?.capital?.current   ?? INITIAL_CAPITAL;
-    const avail       = acc?.capital?.available ?? current;
-    const pnl_eur     = acc?.pnl?.total        ?? 0;
-    const pnl_daily   = acc?.pnl?.daily        ?? 0;
-    const pnl_percent = parseFloat(((pnl_eur / initial) * 100).toFixed(2));
-    const drawdown    = acc?.drawdown?.max_drawdown_pct ?? max_drawdown ?? 0;
     const nPos        = stratPosCounts[name] ?? 0;
     const committed   = stratPosCommit[name] ?? 0;
+    const avail       = parseFloat((initial - committed).toFixed(2));
+    const realizedPnl = realizedByStrat[name] ?? 0;
+    const pnl_daily   = acc?.pnl?.daily        ?? 0;
+    const pnl_percent = parseFloat(((realizedPnl / initial) * 100).toFixed(2));
+    const drawdown    = acc?.drawdown?.max_drawdown_pct ?? max_drawdown ?? 0;
 
     const lastTrade   = trades.length ? trades[trades.length - 1] : null;
 
@@ -329,15 +348,15 @@ router.get("/strategies", (req, res) => {
       name,
       mode:                regData.status?.includes("live") ? "live" : "paper",
       status:              acc?.status          ?? regData.status ?? "paper_testing",
-      capital:             parseFloat(current.toFixed(2)),
+      capital:             parseFloat(initial.toFixed(2)),
       capital_initial:     parseFloat(initial.toFixed(2)),
       capital_available:   parseFloat(avail.toFixed(2)),
       capital_committed:   parseFloat(committed.toFixed(2)),
-      capital_engaged_pct: current > 0 ? parseFloat((committed / current * 100).toFixed(2)) : null,
-      pnl_eur:             parseFloat(pnl_eur.toFixed(2)),
+      capital_engaged_pct: initial > 0 ? parseFloat((committed / initial * 100).toFixed(2)) : null,
+      pnl_eur:             parseFloat(realizedPnl.toFixed(2)),
       pnl_daily:           parseFloat(pnl_daily.toFixed(2)),
       pnl_percent,
-      roi_pct:             initial > 0 ? parseFloat((pnl_eur / initial * 100).toFixed(2)) : null,
+      roi_pct:             initial > 0 ? parseFloat((realizedPnl / initial * 100).toFixed(2)) : null,
       unrealized_pnl:      null,
       win_rate,
       sharpe,
@@ -395,7 +414,17 @@ router.get("/health", (req, res) => {
 
   const sysState    = readJSON(join(POLY_BASE_PATH, "orchestrator", "system_state.json"))    ?? {};
   const heartbeat   = readJSON(join(POLY_BASE_PATH, "orchestrator", "heartbeat_state.json")) ?? {};
-  const pendingRaw  = readJSONL(join(POLY_BASE_PATH, "bus", "pending_events.jsonl"));
+  // pending_events.jsonl is a cumulative event log, not a queue — count lines without loading
+  let busEventsTotal = 0;
+  try {
+    const content = readFileSync(join(POLY_BASE_PATH, "bus", "pending_events.jsonl"), "utf8");
+    busEventsTotal = content.split("\n").filter(Boolean).length;
+  } catch {}
+  let processedTotal = 0;
+  try {
+    const content = readFileSync(join(POLY_BASE_PATH, "bus", "processed_events.jsonl"), "utf8");
+    processedTotal = content.split("\n").filter(Boolean).length;
+  } catch {}
   const deadLetters = readJSONL(join(POLY_BASE_PATH, "bus", "dead_letter.jsonl"));
 
   const agents_status = Object.entries(heartbeat.agents ?? {}).map(([name, d]) => ({
@@ -417,7 +446,9 @@ router.get("/health", (req, res) => {
   healthCache = {
     ts:                     now,
     orchestrator_last_cycle: sysState.last_nightly_run ?? null,
-    pending_events_count:   pendingRaw.length,
+    bus_events_total:       busEventsTotal,
+    bus_processed_total:    processedTotal,
+    bus_pending_real:       Math.max(0, busEventsTotal - processedTotal),
     dead_letter_count:      deadLetters.length,
     agents_status,
     signal_freshness,

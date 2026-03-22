@@ -330,14 +330,14 @@ class PolyEventBus:
             PolyEventBus._consumer_processed[consumer_id] = set()
 
         consumer_seen = PolyEventBus._consumer_processed[consumer_id]
-        acked_set = PolyEventBus._acked_ids  # already a set — O(1) lookups
 
-        # Filter: not globally acked, not already seen by this consumer
+        # Filter: per-consumer only.  _acked_ids is NOT used here — it is
+        # reserved for compact() age-based pruning.  Using it in poll()
+        # broke pub/sub: the first consumer to ack an event made it
+        # invisible to all other consumers sharing the class-level set.
         filtered = []
         for evt in all_events:
             eid = evt.get("event_id")
-            if eid in acked_set:
-                continue
             if eid in consumer_seen:
                 continue
             if topics is not None and evt.get("topic") not in topics:
@@ -456,7 +456,7 @@ class PolyEventBus:
         """
         return self.store.read_jsonl(DEAD_LETTER_FILE)
 
-    def compact(self, max_age_hours=4):
+    def compact(self, max_age_hours=1):
         """Rewrite pending_events.jsonl removing only expired events.
 
         Age-only compaction: events are kept for max_age_hours regardless of
@@ -467,14 +467,15 @@ class PolyEventBus:
         Also truncates processed_events.jsonl to the same retention window
         to prevent unbounded growth (Fix C).
 
-        Why max_age_hours=4:
-          - Slowest consumer interval is 30 s (strategies).
-          - 4 h = 480× safety margin over one polling cycle.
-          - Keeps pending_events.jsonl at ~20 MB steady-state (~40 k events).
-          - Keeps processed_events.jsonl under ~120 MB (vs 600 MB+ before).
+        Why max_age_hours=1:
+          - Slowest consumer interval is 900 s (market_analyst).
+          - 1 h = 4× safety margin over the slowest consumer.
+          - Keeps pending_events.jsonl at ~50 MB steady-state (~110 k events).
+          - Keeps _fc_events cache at ~220 MB (vs 850 MB at 4 h).
+          - Keeps _consumer_processed at ~90 MB (vs 370 MB at 4 h).
 
         Args:
-            max_age_hours: Remove events older than this. Default 4h.
+            max_age_hours: Remove events older than this. Default 1h.
         """
         import tempfile
 

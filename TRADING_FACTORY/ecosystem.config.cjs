@@ -2,7 +2,7 @@ module.exports = {
   apps: [{
     name:          'trading-poller',
     script:        'poller.js',
-    cwd:           '/home/openclawadmin/openclaw/workspace/skills_custom/trading',
+    cwd:           '/home/openclawadmin/openclaw/workspace/TRADING_FACTORY',
     autorestart:   true,
     restart_delay: 3000,
     max_restarts:  10,

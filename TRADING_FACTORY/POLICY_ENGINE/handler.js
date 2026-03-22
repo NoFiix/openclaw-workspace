@@ -113,8 +113,21 @@ function checkPolicy(plan, cfg, ks) {
     return { decision: "BLOCKED", reason: `asset_blacklisted: ${plan.symbol}`, checks };
   }
 
-  // 4. Stratégie autorisée
-  checks.strategy_allowed = (cfg.allowed_strategies ?? []).includes(plan.strategy);
+  // 4. Stratégie autorisée — normalisation défensive des variantes connues
+  const STRATEGY_ALIASES = {
+    "Mean Reversion Stress Index Strategy": "MeanReversion",
+    "Mean Reversion Stress Index (MRSI)":   "MeanReversion",
+    "Mean Reversion IBS":                   "MeanReversion",
+    "mean reversion":                       "MeanReversion",
+    "meanreversion":                        "MeanReversion",
+    "momentum":                             "Momentum",
+    "breakout":                             "Breakout",
+    "newstrading":                          "NewsTrading",
+    "news trading":                         "NewsTrading",
+  };
+  const rawStrategy    = plan.strategy ?? "";
+  const normalizedStrat = STRATEGY_ALIASES[rawStrategy] ?? STRATEGY_ALIASES[rawStrategy.toLowerCase()] ?? rawStrategy;
+  checks.strategy_allowed = (cfg.allowed_strategies ?? []).includes(normalizedStrat);
   if (!checks.strategy_allowed) {
     return { decision: "BLOCKED", reason: `strategy_not_allowed: ${plan.strategy}`, checks };
   }

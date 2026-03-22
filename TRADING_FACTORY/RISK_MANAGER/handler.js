@@ -8,16 +8,17 @@
 
 import fs   from "fs";
 import path from "path";
+import { loadWallet, resolveStrategyConfig, isCircuitBreakerTripped, suspendStrategy } from "../_shared/strategy_utils.js";
 
-// ─── Paramètres de risk ───────────────────────────────────────────────────
-const RISK_PARAMS = {
-  capital_usd:           10000,   // Capital paper initial
-  max_risk_per_trade_pct: 1.0,    // Max 1% du capital par trade
-  max_open_positions:     3,      // Max 3 positions simultanées
-  max_daily_loss_pct:     3.0,    // Kill switch à 3%
-  min_confidence:         0.45,   // Confidence minimum pour valider
-  min_risk_reward:        2.0,    // R/R minimum
-  max_slippage_bps:       30,     // 0.30% de slippage max estimé
+// ─── Paramètres de risk par défaut (fallback si registry indisponible) ────
+const DEFAULT_RISK_PARAMS = {
+  capital_usd:           10000,
+  max_risk_per_trade_pct: 1.0,
+  max_open_positions:     3,
+  max_daily_loss_pct:     3.0,
+  min_confidence:         0.45,
+  min_risk_reward:        2.0,
+  max_slippage_bps:       30,
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -56,7 +57,7 @@ function calcPositionValueUSD(qty, entry) {
 
 // ─── Moteurs de validation ────────────────────────────────────────────────
 
-function validateProposal(proposal, openPositions, dailyPnl) {
+function validateProposal(proposal, openPositions, dailyPnl, riskParams, capitalUsd) {
   const blocks = [];
 
   // 1. HOLD → pas besoin de valider
@@ -65,13 +66,13 @@ function validateProposal(proposal, openPositions, dailyPnl) {
   }
 
   // 2. Confidence minimum
-  if (proposal.confidence < RISK_PARAMS.min_confidence) {
-    blocks.push(`confidence trop faible: ${proposal.confidence} < ${RISK_PARAMS.min_confidence}`);
+  if (proposal.confidence < riskParams.min_confidence) {
+    blocks.push(`confidence trop faible: ${proposal.confidence} < ${riskParams.min_confidence}`);
   }
 
   // 3. Risk/reward minimum
-  if (proposal.setup?.risk_reward < RISK_PARAMS.min_risk_reward) {
-    blocks.push(`risk_reward insuffisant: ${proposal.setup?.risk_reward} < ${RISK_PARAMS.min_risk_reward}`);
+  if (proposal.setup?.risk_reward < riskParams.min_risk_reward) {
+    blocks.push(`risk_reward insuffisant: ${proposal.setup?.risk_reward} < ${riskParams.min_risk_reward}`);
   }
 
   // 4. Stop-loss obligatoire
@@ -87,19 +88,21 @@ function validateProposal(proposal, openPositions, dailyPnl) {
     blocks.push(`stop SELL en-dessous du prix d'entrée: stop=${proposal.setup.stop} entry=${proposal.setup.entry}`);
   }
 
-  // 6. Max positions ouvertes
-  const sameSymbol = openPositions.filter(p => p.symbol === proposal.symbol);
+  // 6. Max positions ouvertes (per-strategy)
+  const strategyId  = proposal.strategy_id ?? proposal.strategy;
+  const stratPositions = openPositions.filter(p => (p.strategy_id ?? p.strategy) === strategyId);
+  const sameSymbol = stratPositions.filter(p => p.symbol === proposal.symbol);
   if (sameSymbol.length > 0) {
-    blocks.push(`position déjà ouverte sur ${proposal.symbol}`);
+    blocks.push(`position déjà ouverte sur ${proposal.symbol} pour ${strategyId}`);
   }
-  if (openPositions.length >= RISK_PARAMS.max_open_positions) {
-    blocks.push(`max positions atteint: ${openPositions.length}/${RISK_PARAMS.max_open_positions}`);
+  if (stratPositions.length >= riskParams.max_open_positions) {
+    blocks.push(`max positions atteint pour ${strategyId}: ${stratPositions.length}/${riskParams.max_open_positions}`);
   }
 
   // 7. Daily loss limit
-  const dailyLossPct = Math.abs(dailyPnl) / RISK_PARAMS.capital_usd * 100;
-  if (dailyPnl < 0 && dailyLossPct >= RISK_PARAMS.max_daily_loss_pct) {
-    blocks.push(`daily loss limit atteinte: ${dailyLossPct.toFixed(2)}% >= ${RISK_PARAMS.max_daily_loss_pct}%`);
+  const dailyLossPct = Math.abs(dailyPnl) / capitalUsd * 100;
+  if (dailyPnl < 0 && dailyLossPct >= riskParams.max_daily_loss_pct) {
+    blocks.push(`daily loss limit atteinte: ${dailyLossPct.toFixed(2)}% >= ${riskParams.max_daily_loss_pct}%`);
   }
 
   return { valid: blocks.length === 0, reason: blocks[0] ?? null, blocks };
@@ -135,10 +138,37 @@ export async function handler(ctx) {
       continue;
     }
 
-    const { valid, reason, blocks } = validateProposal(p, openPositions, dailyPnl);
+    // Resolve per-strategy config and wallet
+    const strategyId = p.strategy_id ?? p.strategy;
+    let riskParams = DEFAULT_RISK_PARAMS;
+    let capitalUsd = DEFAULT_RISK_PARAMS.capital_usd;
+
+    try {
+      const stratConfig = resolveStrategyConfig(strategyId);
+      riskParams = { ...DEFAULT_RISK_PARAMS, ...stratConfig.risk_params };
+      const wallet = loadWallet(strategyId);
+
+      // Circuit breaker check
+      if (isCircuitBreakerTripped(wallet, stratConfig)) {
+        suspendStrategy(strategyId, `circuit_breaker: cash $${wallet.cash} < threshold $${stratConfig.min_cash_threshold}`);
+        ctx.log(`🚨 ${p.symbol} ${p.side} — circuit breaker tripped for ${strategyId}`);
+        blocked++;
+        continue;
+      }
+      if (wallet.status === "suspended") {
+        ctx.log(`⏸️ ${p.symbol} ${p.side} — ${strategyId} suspended: ${wallet.suspended_reason}`);
+        blocked++;
+        continue;
+      }
+
+      capitalUsd = wallet.cash;
+    } catch (e) {
+      ctx.log(`⚠️ ${strategyId}: registry/wallet error — using defaults: ${e.message}`);
+    }
+
+    const { valid, reason, blocks } = validateProposal(p, openPositions, dailyPnl, riskParams, capitalUsd);
 
     if (!valid) {
-      // Émettre un block
       ctx.emit(
         "trading.strategy.block",
         "strategy.block.v1",
@@ -147,25 +177,26 @@ export async function handler(ctx) {
           proposal_ref:  event.event_id,
           symbol:        p.symbol,
           side:          p.side,
+          strategy_id:   strategyId,
           reason:        reason ?? "validation échouée",
           all_reasons:   blocks,
           blocked_at:    Date.now(),
         }
       );
       blocked++;
-      ctx.log(`🚫 ${p.symbol} ${p.side} BLOQUÉ — ${reason}`);
+      ctx.log(`🚫 ${p.symbol} ${p.side} [${strategyId}] BLOQUÉ — ${reason}`);
       continue;
     }
 
-    // Calcul taille de position
+    // Calcul taille de position avec capital du wallet
     const qty      = calcPositionSize(
-      RISK_PARAMS.capital_usd,
-      RISK_PARAMS.max_risk_per_trade_pct,
+      capitalUsd,
+      riskParams.max_risk_per_trade_pct,
       p.setup.entry,
       p.setup.stop
     );
     const valueUSD = calcPositionValueUSD(qty, p.setup.entry);
-    const riskUSD  = RISK_PARAMS.capital_usd * (RISK_PARAMS.max_risk_per_trade_pct / 100);
+    const riskUSD  = capitalUsd * (riskParams.max_risk_per_trade_pct / 100);
 
     // Émettre l'order plan
     ctx.emit(
@@ -173,11 +204,14 @@ export async function handler(ctx) {
       "strategy.order.plan.v1",
       { asset: p.symbol },
       {
-        proposal_ref:   event.event_id,
-        symbol:         p.symbol,
-        side:           p.side,
-        strategy:       p.strategy,
-        confidence:     p.confidence,
+        proposal_ref:      event.event_id,
+        symbol:            p.symbol,
+        side:              p.side,
+        strategy:          p.strategy,
+        strategy_id:       strategyId,
+        wallet_id:         p.wallet_id ?? null,
+        execution_target:  p.execution_target ?? "paper",
+        confidence:        p.confidence,
         setup: {
           entry:        p.setup.entry,
           stop:         p.setup.stop,
@@ -186,7 +220,7 @@ export async function handler(ctx) {
           qty,
           value_usd:    valueUSD,
           risk_usd:     riskUSD,
-          risk_pct:     RISK_PARAMS.max_risk_per_trade_pct,
+          risk_pct:     riskParams.max_risk_per_trade_pct,
         },
         time_horizon:   p.time_horizon,
         regime:         p.regime,
@@ -198,9 +232,9 @@ export async function handler(ctx) {
 
     approved++;
     ctx.log(
-      `✅ ${p.symbol} ${p.side} APPROUVÉ ` +
+      `✅ ${p.symbol} ${p.side} [${strategyId}] APPROUVÉ ` +
       `qty=${qty} value=$${valueUSD} risk=$${riskUSD.toFixed(2)} ` +
-      `entry=${p.setup.entry} stop=${p.setup.stop} tp=${p.setup.tp}`
+      `capital=$${capitalUsd} entry=${p.setup.entry} stop=${p.setup.stop} tp=${p.setup.tp}`
     );
   }
 

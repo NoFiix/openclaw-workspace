@@ -188,7 +188,7 @@ class TestNoDuplicateTradeOnRestart:
         assert len(results2) == 1
 
     def test_acked_ids_persisted_to_disk(self, tmp_path):
-        """bus.ack() writes to processed_events.jsonl; a new bus instance honours it."""
+        """bus.ack() writes to processed_events.jsonl; a different consumer can still see the event (pub/sub)."""
         _create_account(tmp_path)
         bus1 = PolyEventBus(base_path=str(tmp_path))
         envelope = bus1.publish(
@@ -198,14 +198,20 @@ class TestNoDuplicateTradeOnRestart:
         )
         event_id = envelope["event_id"]
 
-        # Ack via bus1
+        # Ack via bus1 as CONSUMER_A
         bus1.ack("CONSUMER_A", event_id)
 
-        # New bus instance — simulates restart
+        # New bus instance — simulates restart.
+        # CONSUMER_B should still see the event (pub/sub: per-consumer filtering).
         bus2 = PolyEventBus(base_path=str(tmp_path))
         events = bus2.poll("CONSUMER_B", topics=["execute:paper"])
         found_ids = [e["event_id"] for e in events]
-        assert event_id not in found_ids
+        assert event_id in found_ids
+
+        # But CONSUMER_A should NOT see it again (idempotence)
+        events_a = bus2.poll("CONSUMER_A", topics=["execute:paper"])
+        found_ids_a = [e["event_id"] for e in events_a]
+        assert event_id not in found_ids_a
 
 
 # ---------------------------------------------------------------------------

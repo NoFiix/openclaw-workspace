@@ -112,8 +112,14 @@ async function callClaude(system, user) {
       let raw = "";
       res.on("data", c => raw += c);
       res.on("end", () => {
-        try { resolve(JSON.parse(raw).content?.[0]?.text?.trim() || ""); }
-        catch { reject(new Error("Erreur parsing Claude")); }
+        try {
+          const json = JSON.parse(raw);
+          if (json.error) {
+            reject(new Error(`API ${res.statusCode}: ${json.error.message || JSON.stringify(json.error)}`));
+            return;
+          }
+          resolve(json.content?.[0]?.text?.trim() || "");
+        } catch { reject(new Error("Erreur parsing Claude")); }
       });
     });
     req.on("error", reject);

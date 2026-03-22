@@ -9,10 +9,11 @@
 import fs   from "fs";
 import path from "path";
 import { logTokens } from "../_shared/logTokens.js";
+import { loadRegistry, resolveStrategyConfig } from "../_shared/strategy_utils.js";
 
 const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
 const MODEL         = "claude-haiku-4-5-20251001";
-const MAX_TOKENS    = 600;
+const MAX_TOKENS    = 800;
 const TIMEOUT_MS    = 20000;
 const SYMBOLS       = ["BTCUSDT", "ETHUSDT", "BNBUSDT"];
 const COOLDOWN_MS   = 30 * 60 * 1000; // 30 minutes par asset
@@ -198,11 +199,12 @@ ${stratList}
 - Stop-loss OBLIGATOIRE si side != "HOLD"
 - Risk/reward minimum: 2.0
 - Jamais de leverage
+- Le champ "strategy" DOIT être exactement l'un de ces 4 identifiants (casse exacte, pas de variante) : MeanReversion, Momentum, Breakout, NewsTrading
 
 ## Format de réponse JSON
 {
   "symbol": "${symbol}",
-  "strategy": "${strategies.map(s=>s.name).join('|')}",
+  "strategy": "MeanReversion|Momentum|Breakout|NewsTrading",
   "side": "BUY|SELL|HOLD",
   "confidence": 0.0,
   "setup": {
@@ -281,7 +283,7 @@ function validateProposal(p, symbol) {
 // ─── Filtre pré-Haiku — évite les appels inutiles ─────────────────────────
 // Retourne true si au minimum 1 stratégie a des conditions d'entrée plausibles.
 // EXTENSIBLE : ajouter un bloc par nouvelle stratégie.
-function hasSignal(f5m, f1h, f4h, regime) {
+function hasSignal(f5m, f1h, f4h, regime, recentUrgentNews = []) {
   const r = regime?.regime ?? "UNKNOWN";
   const conf = regime?.confidence ?? 0;
 
@@ -291,35 +293,37 @@ function hasSignal(f5m, f1h, f4h, regime) {
   // En PANIC : uniquement si on a une stratégie dédiée (pas encore implémentée)
   if (r === "PANIC") return false;
 
-  // ── MeanReversion : RSI extrême + BB aux bandes ──────────────────────────
-  const rsi1m  = f5m?.rsi_14    ?? 50;
-  const bb1m   = f5m?.bb_pct_b  ?? 0.5;
+  // ── MeanReversion : RSI extrême + BB aux bandes (seuils ajustés pour 5m) ──
+  const rsi5m  = f5m?.rsi_14    ?? 50;
+  const bb5m   = f5m?.bb_pct_b  ?? 0.5;
   const rsi1h  = f1h?.rsi_14    ?? 50;
-  const bb1h   = f1h?.bb_pct_b  ?? 0.5;
   const meanRevSignal =
-    (rsi1m < 35 || rsi1m > 65) &&
-    (bb1m < 0.15 || bb1m > 0.85) &&
+    (rsi5m < 40 || rsi5m > 60) &&
+    (bb5m < 0.25 || bb5m > 0.75) &&
     (rsi1h < 40 || rsi1h > 60);
 
-  // ── Momentum : MACD histogram fort sur 1h + 4h concordants ──────────────
+  // ── Momentum : MACD 1h fort + 4h concordant OU 1h très fort seul ────────
   const macd1h = Math.abs(f1h?.macd_histogram ?? 0);
   const macd4h = Math.abs(f4h?.macd_histogram ?? 0);
   const macd1hSign = Math.sign(f1h?.macd_histogram ?? 0);
   const macd4hSign = Math.sign(f4h?.macd_histogram ?? 0);
-  const momentumSignal =
-    macd1h > 0 &&
-    macd4h > 0 &&
-    macd1hSign === macd4hSign && // même direction
+  const momentumAligned =
+    macd1h > 0 && macd4h > 0 &&
+    macd1hSign === macd4hSign &&
     (r === "TREND_UP" || r === "TREND_DOWN");
+  const momentumStrong1h =
+    macd1h > 0 && conf >= 0.7 &&
+    (r === "TREND_UP" || r === "TREND_DOWN");
+  const momentumSignal = momentumAligned || momentumStrong1h;
 
-  // ── Breakout : BB très serré sur 1h (squeeze) → explosion imminente ──────
+  // ── Breakout : BB serré sur 1h (squeeze — seuil ajusté pour 5m) ─────────
   const bbWidth1h = f1h?.bb_width ?? 999;
-  const breakoutSignal = bbWidth1h < 0.02; // bandes très serrées
+  const breakoutSignal = bbWidth1h < 0.03;
 
-  // ── NewsMomentum (futur) : placeholder ───────────────────────────────────
-  // const newsMomentumSignal = false; // à implémenter Sprint futur
+  // ── NewsTrading : news urgente récente (urgency >= 8 dans la dernière heure)
+  const newsMomentumSignal = recentUrgentNews.length > 0;
 
-  return meanRevSignal || momentumSignal || breakoutSignal;
+  return meanRevSignal || momentumSignal || breakoutSignal || newsMomentumSignal;
 }
 
 export async function handler(ctx) {
@@ -375,8 +379,9 @@ export async function handler(ctx) {
       ctx.log(`⚠️ ${symbol}: features incomplètes (5m=${!!f5m} 1h=${!!f1h} 4h=${!!f4h})`);
       continue;
     }
-    // Filtre pré-Haiku
-    if (!hasSignal(f5m, f1h, f4h, regime)) {
+    // Filtre pré-Haiku — inclut check news urgentes
+    const urgentNews = getRecentNews(ctx.bus, symbol).filter(n => (n.urgency ?? 0) >= 8);
+    if (!hasSignal(f5m, f1h, f4h, regime, urgentNews)) {
       ctx.log(`⚪ ${symbol}: pas de signal — skip Haiku`);
       continue;
     }
@@ -395,14 +400,26 @@ export async function handler(ctx) {
 
       if (!raw) { ctx.log(`⚠️ ${symbol}: réponse vide Haiku`); continue; }
 
-      // Parse JSON
+      // Parse JSON — deux passes : strip markdown, puis extraction {…}
       let proposal;
       try {
+        // Passe 1 : strip markdown et parse direct
         const clean = raw.replace(/```json|```/g, "").trim();
         proposal    = JSON.parse(clean);
       } catch {
-        ctx.log(`⚠️ ${symbol}: JSON invalide — ${raw.slice(0, 100)}`);
-        continue;
+        // Passe 2 : extraire le premier objet JSON complet {…}
+        try {
+          const first = raw.indexOf("{");
+          const last  = raw.lastIndexOf("}");
+          if (first !== -1 && last > first) {
+            proposal = JSON.parse(raw.substring(first, last + 1));
+          } else {
+            throw new Error("no JSON object found");
+          }
+        } catch {
+          ctx.log(`⚠️ ${symbol}: JSON invalide — ${raw.slice(0, 150)}`);
+          continue;
+        }
       }
 
       // Validation
@@ -434,6 +451,10 @@ export async function handler(ctx) {
         }
       }
 
+      // Resolve strategy routing from registry
+      let stratConfig = null;
+      try { stratConfig = resolveStrategyConfig(proposal.strategy); } catch {}
+
       // Emit
       ctx.emit(
         "trading.strategy.trade.proposal",
@@ -442,9 +463,12 @@ export async function handler(ctx) {
         {
           ...proposal,
           symbol,
-          generated_at:  Date.now(),
-          regime:        regime.regime,
-          regime_conf:   regime.confidence,
+          strategy_id:       proposal.strategy,
+          wallet_id:         stratConfig?.wallet_id ?? null,
+          execution_target:  stratConfig?.execution_target ?? "paper",
+          generated_at:      Date.now(),
+          regime:            regime.regime,
+          regime_conf:       regime.confidence,
           validation_errors: errors,
         }
       );

@@ -56,8 +56,8 @@ router.get("/", (req, res) => {
     .filter(i => i.status === "open").length;
 
   // Pollers
-  const tradingPid = getPollerPid("trading/poller.js");
-  const contentPid = getPollerPid("skills_custom/poller.js");
+  const tradingPid = getPollerPid("TRADING_FACTORY/poller.js");
+  const contentPid = getPollerPid("CONTENT_FACTORY/poller.js");
 
   // Disk
   const disk = getDiskUsage();
@@ -150,7 +150,7 @@ router.get("/", (req, res) => {
 
   // Pollers — depuis pgrep déjà calculé
   // "trading/poller.js" = System Pollers layer ; "content/poller.js" = System Pollers layer ; "poller.js" = Content Pipeline layer (même process)
-  allAgents.push({ name: "trading/poller.js", last_run_ts: null, every_seconds: null, status: tradingPid ? "ok" : "error" });
+  allAgents.push({ name: "TRADING_FACTORY/poller.js", last_run_ts: null, every_seconds: null, status: tradingPid ? "ok" : "error" });
   allAgents.push({ name: "content/poller.js", last_run_ts: null, every_seconds: null, status: contentPid ? "ok" : "error" });
   allAgents.push({ name: "poller.js",         last_run_ts: null, every_seconds: null, status: contentPid ? "ok" : "error" });
 

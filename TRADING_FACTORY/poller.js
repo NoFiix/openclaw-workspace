@@ -41,7 +41,7 @@ function loadSchedules() {
 
 function runAgent(agentId, runId) {
   return new Promise((resolve) => {
-    const skillPath  = path.join(WORKSPACE_DIR, "skills_custom", "trading", agentId, "index.js");
+    const skillPath  = path.join(WORKSPACE_DIR, "TRADING_FACTORY", agentId, "index.js");
     const runsDir    = path.join(STATE_DIR, "runs");
     fs.mkdirSync(runsDir, { recursive: true });
 

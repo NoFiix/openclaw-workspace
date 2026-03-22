@@ -81,7 +81,7 @@ def _make_resolution(
     }
 
 
-def _make_price(market_id, no_ask=0.91, no_bid=0.89, yes_ask=0.09, yes_bid=0.07):
+def _make_price(market_id, no_ask=0.85, no_bid=0.83, yes_ask=0.15, yes_bid=0.13):
     return {
         "market_id": market_id,
         "no_ask":    no_ask,
@@ -96,7 +96,7 @@ def _publish_resolution(bus, market_id, **kwargs):
     bus.publish("signal:resolution_parsed", "TEST_PRODUCER", payload)
 
 
-def _publish_price(bus, market_id, no_ask=0.91):
+def _publish_price(bus, market_id, no_ask=0.85):
     payload = _make_price(market_id, no_ask=no_ask)
     bus.publish("feed:price_update", "TEST_PRODUCER", payload)
 
@@ -127,9 +127,9 @@ def scanner_and_bus(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_buy_no_signal_when_no_ask_high_and_llm_confirms(scanner_and_bus):
-    """no_ask=0.91, LLM P(YES)=0.05 → P(NO)=0.95, edge=0.04 → BUY_NO."""
+    """no_ask=0.85, LLM P(YES)=0.05 → P(NO)=0.95, edge=0.10 → BUY_NO."""
     s, bus = scanner_and_bus
-    _publish_price(bus, "0xAAA", no_ask=0.91)
+    _publish_price(bus, "0xAAA", no_ask=0.85)
     _publish_resolution(bus, "0xAAA")
     signals = s.run_once()
     assert len(signals) == 1
@@ -149,17 +149,17 @@ def test_no_signal_when_llm_prob_no_below_min(scanner_and_bus):
     """LLM P(YES)=0.25, P(NO)=0.75 < MIN_LLM_PROBABILITY_NO=0.80 → no signal."""
     s, bus = scanner_and_bus
     s._llm_client = MockLLMClient(probability=0.25)
-    _publish_price(bus, "0xAAA", no_ask=0.91)
+    _publish_price(bus, "0xAAA", no_ask=0.85)
     _publish_resolution(bus, "0xAAA")
     signals = s.run_once()
     assert signals == []
 
 
 def test_no_signal_when_edge_below_threshold(scanner_and_bus):
-    """P(NO)=0.92, no_ask=0.91 → edge=0.01 < EDGE_THRESHOLD=0.03 → no signal."""
+    """P(NO)=0.92, no_ask=0.88 → edge=0.04 < EDGE_THRESHOLD=0.08 → no signal."""
     s, bus = scanner_and_bus
     s._llm_client = MockLLMClient(probability=0.08)  # prob_no = 0.92
-    _publish_price(bus, "0xAAA", no_ask=0.91)        # edge = 0.92 - 0.91 = 0.01
+    _publish_price(bus, "0xAAA", no_ask=0.88)        # edge = 0.92 - 0.88 = 0.04
     _publish_resolution(bus, "0xAAA")
     signals = s.run_once()
     assert signals == []
@@ -168,7 +168,7 @@ def test_no_signal_when_edge_below_threshold(scanner_and_bus):
 def test_no_signal_when_ambiguity_too_high(scanner_and_bus):
     """ambiguity_score = MAX_AMBIGUITY_SCORE (3) → no signal."""
     s, bus = scanner_and_bus
-    _publish_price(bus, "0xAAA", no_ask=0.91)
+    _publish_price(bus, "0xAAA", no_ask=0.85)
     _publish_resolution(bus, "0xAAA", ambiguity_score=MAX_AMBIGUITY_SCORE)
     signals = s.run_once()
     assert signals == []
@@ -177,7 +177,7 @@ def test_no_signal_when_ambiguity_too_high(scanner_and_bus):
 def test_signal_when_ambiguity_just_below_max(scanner_and_bus):
     """ambiguity_score = MAX_AMBIGUITY_SCORE - 1 (2) → signal emitted."""
     s, bus = scanner_and_bus
-    _publish_price(bus, "0xAAA", no_ask=0.91)
+    _publish_price(bus, "0xAAA", no_ask=0.85)
     _publish_resolution(bus, "0xAAA", ambiguity_score=MAX_AMBIGUITY_SCORE - 1)
     signals = s.run_once()
     assert len(signals) == 1
@@ -195,7 +195,7 @@ REQUIRED_FIELDS = {
 
 def _get_signal(scanner_and_bus):
     s, bus = scanner_and_bus
-    _publish_price(bus, "0xAAA", no_ask=0.91)
+    _publish_price(bus, "0xAAA", no_ask=0.85)
     _publish_resolution(bus, "0xAAA")
     signals = s.run_once()
     assert signals, "Expected a signal"
@@ -246,7 +246,7 @@ def test_signal_confidence_not_above_1(scanner_and_bus):
     """Extreme edge: very high P(NO), very low no_ask → confidence clamped at 1.0."""
     s, bus = scanner_and_bus
     s._llm_client = MockLLMClient(probability=0.01)  # P(NO) = 0.99
-    _publish_price(bus, "0xAAA", no_ask=0.90)         # edge = 0.09, well above 4×threshold
+    _publish_price(bus, "0xAAA", no_ask=0.80)         # edge = 0.19, well above 4×threshold
     _publish_resolution(bus, "0xAAA")
     signals = s.run_once()
     assert signals[0]["confidence"] <= 1.0
@@ -270,7 +270,7 @@ def test_signal_detail_fields(scanner_and_bus):
 def test_signal_detail_values(scanner_and_bus):
     s, bus = scanner_and_bus
     COND   = "BTC price > 150000 USD on 2026-03-31"
-    NO_ASK = 0.91
+    NO_ASK = 0.85
     _publish_price(bus, "0xAAA", no_ask=NO_ASK)
     _publish_resolution(bus, "0xAAA", boolean_condition=COND, ambiguity_score=1, unexpected_risk_score=2)
     signals = s.run_once()
@@ -302,7 +302,7 @@ def test_llm_cache_hit_no_new_call(tmp_path):
     }
 
     res_payload   = _make_resolution("0xAAA")
-    price_payload = _make_price("0xAAA", no_ask=0.91)
+    price_payload = _make_price("0xAAA", no_ask=0.85)
     s._check_opportunity("0xAAA", res_payload, price_payload)
 
     assert mock_llm.call_count == 0
@@ -322,7 +322,7 @@ def test_llm_cache_no_ttl(tmp_path):
     }
 
     res_payload   = _make_resolution("0xAAA")
-    price_payload = _make_price("0xAAA", no_ask=0.91)
+    price_payload = _make_price("0xAAA", no_ask=0.85)
     s._check_opportunity("0xAAA", res_payload, price_payload)
 
     assert mock_llm.call_count == 0
@@ -331,7 +331,7 @@ def test_llm_cache_no_ttl(tmp_path):
 def test_llm_cache_persisted_to_disk(scanner_and_bus, tmp_path):
     """After a signal is emitted, the LLM cache file should exist on disk."""
     s, bus = scanner_and_bus
-    _publish_price(bus, "0xAAA", no_ask=0.91)
+    _publish_price(bus, "0xAAA", no_ask=0.85)
     _publish_resolution(bus, "0xAAA")
     s.run_once()
 
@@ -356,7 +356,7 @@ def test_llm_cache_loaded_on_init(tmp_path):
     s = PolyNoScanner(base_path=state_path, llm_client=mock_llm)
 
     res_payload   = _make_resolution("0xAAA")
-    price_payload = _make_price("0xAAA", no_ask=0.91)
+    price_payload = _make_price("0xAAA", no_ask=0.85)
     s._check_opportunity("0xAAA", res_payload, price_payload)
 
     assert mock_llm.call_count == 0, "Should have used the loaded disk cache"
@@ -391,7 +391,7 @@ def test_parse_llm_response_invalid_raises(scanner):
 
 def test_signal_published_to_bus(scanner_and_bus):
     s, bus = scanner_and_bus
-    _publish_price(bus, "0xAAA", no_ask=0.91)
+    _publish_price(bus, "0xAAA", no_ask=0.85)
     _publish_resolution(bus, "0xAAA")
     s.run_once()
 
@@ -404,7 +404,7 @@ def test_signal_published_to_bus(scanner_and_bus):
 
 def test_signal_bus_producer(scanner_and_bus):
     s, bus = scanner_and_bus
-    _publish_price(bus, "0xAAA", no_ask=0.91)
+    _publish_price(bus, "0xAAA", no_ask=0.85)
     _publish_resolution(bus, "0xAAA")
     s.run_once()
 
@@ -416,7 +416,7 @@ def test_signal_bus_producer(scanner_and_bus):
 
 def test_signal_audit_logged(scanner_and_bus):
     s, bus = scanner_and_bus
-    _publish_price(bus, "0xAAA", no_ask=0.91)
+    _publish_price(bus, "0xAAA", no_ask=0.85)
     _publish_resolution(bus, "0xAAA")
     s.run_once()
 
@@ -434,7 +434,7 @@ def test_signal_audit_logged(scanner_and_bus):
 
 def test_run_once_acks_events(scanner_and_bus):
     s, bus = scanner_and_bus
-    _publish_price(bus, "0xAAA", no_ask=0.91)
+    _publish_price(bus, "0xAAA", no_ask=0.85)
     _publish_resolution(bus, "0xAAA")
     s.run_once()
 
@@ -456,10 +456,10 @@ def test_resolution_cache_updated_on_event(scanner_and_bus):
 
 def test_price_cache_updated_on_event(scanner_and_bus):
     s, bus = scanner_and_bus
-    _publish_price(bus, "0xAAA", no_ask=0.91)
+    _publish_price(bus, "0xAAA", no_ask=0.85)
     s.run_once()
     assert "0xAAA" in s._price_cache
-    assert s._price_cache["0xAAA"]["no_ask"] == 0.91
+    assert s._price_cache["0xAAA"]["no_ask"] == 0.85
 
 
 def test_no_signal_without_price_cache(scanner_and_bus):
@@ -471,7 +471,7 @@ def test_no_signal_without_price_cache(scanner_and_bus):
 
 def test_no_signal_without_resolution_cache(scanner_and_bus):
     s, bus = scanner_and_bus
-    _publish_price(bus, "0xAAA", no_ask=0.91)
+    _publish_price(bus, "0xAAA", no_ask=0.85)
     signals = s.run_once()
     assert signals == []
 
@@ -482,11 +482,10 @@ def test_no_signal_without_resolution_cache(scanner_and_bus):
 
 def test_multiple_markets_both_signal(scanner_and_bus):
     s, bus = scanner_and_bus
-    # Both markets: P(YES)=0.05, no_ask=0.93 → P(NO)=0.95, edge=0.02... wait
-    # edge = 0.95 - 0.93 = 0.02 < EDGE_THRESHOLD(0.03) — need higher edge
-    # Use no_ask=0.91: edge = 0.95 - 0.91 = 0.04 > 0.03 ✓
-    _publish_price(bus, "0xAAA", no_ask=0.91)
-    _publish_price(bus, "0xBBB", no_ask=0.91)
+    # Both markets: P(YES)=0.05 → P(NO)=0.95, no_ask=0.85
+    # edge = 0.95 - 0.85 = 0.10 > EDGE_THRESHOLD(0.08) ✓
+    _publish_price(bus, "0xAAA", no_ask=0.85)
+    _publish_price(bus, "0xBBB", no_ask=0.85)
     _publish_resolution(bus, "0xAAA")
     _publish_resolution(bus, "0xBBB")
     signals = s.run_once()
@@ -502,13 +501,13 @@ def test_multiple_markets_only_one_signals(tmp_path):
     bus = PolyEventBus(base_path=state_path)
 
     # Pre-seed LLM cache for deterministic results
-    # 0xAAA: P(YES)=0.05 → P(NO)=0.95, no_ask=0.91, edge=0.04 > 0.03 → signal
-    # 0xBBB: P(YES)=0.15 → P(NO)=0.85 < MIN_LLM_PROBABILITY_NO=0.90 → no signal
+    # 0xAAA: P(YES)=0.05 → P(NO)=0.95, no_ask=0.85, edge=0.10 > 0.08 → signal
+    # 0xBBB: P(YES)=0.15 → P(NO)=0.85, no_ask=0.85, edge=0.00 < 0.08 → no signal
     s._llm_cache["0xAAA"] = {"prob_yes": 0.05, "reasoning": "high NO prob"}
     s._llm_cache["0xBBB"] = {"prob_yes": 0.15, "reasoning": "low NO prob"}
 
-    _publish_price(bus, "0xAAA", no_ask=0.91)
-    _publish_price(bus, "0xBBB", no_ask=0.91)
+    _publish_price(bus, "0xAAA", no_ask=0.85)
+    _publish_price(bus, "0xBBB", no_ask=0.85)
     _publish_resolution(bus, "0xAAA")
     _publish_resolution(bus, "0xBBB")
 

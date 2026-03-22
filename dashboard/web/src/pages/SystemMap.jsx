@@ -31,14 +31,15 @@ const SYSTEM_DATA = [
         { id: "KILL_SWITCH_GUARDIAN",  interval: "60s", llm: null, desc: "Surveille drawdown daily. -3% = TRIPPED. Reset manuel uniquement. Bloque POLICY_ENGINE", inputs: [], outputs: ["POLICY_ENGINE","TRADING_ORCHESTRATOR"] },
         { id: "TRADING_ORCHESTRATOR",  interval: "10s", llm: null, desc: "Corrèle order_plan + policy.decision via order_plan_ref. États PENDING→APPROVED/BLOCKED/EXPIRED", inputs: ["POLICY_ENGINE"], outputs: ["TESTNET_EXECUTOR"] },
         { id: "TESTNET_EXECUTOR",      interval: "30s", llm: null, desc: "Ordre MARKET sur Binance Testnet + OCO (TP+SL) automatique. Écrit positions_testnet.json + ledger", inputs: ["TRADING_ORCHESTRATOR"], outputs: ["TRADING_PUBLISHER","PERFORMANCE_ANALYST"] },
-        { id: "PAPER_EXECUTOR",        interval: "30s", llm: null, desc: "Simule l'exécution en paper trading — désactivé, remplacé par TESTNET_EXECUTOR", inputs: ["TRADING_ORCHESTRATOR"], outputs: ["TRADING_PUBLISHER"], skip: true },
+        { id: "PAPER_EXECUTOR",        interval: "30s", llm: null, desc: "Exécution paper trading — filtre par execution_target=paper. Actif en parallèle de TESTNET_EXECUTOR", inputs: ["TRADING_ORCHESTRATOR"], outputs: ["TRADING_PUBLISHER","PERFORMANCE_ANALYST"] },
       ]},
       { name: "Publication", color: "#34d399", agents: [
         { id: "TRADING_PUBLISHER", interval: "60s", llm: "Haiku", desc: "Publie positions et bilans sur Telegram @CryptoRizonTrader_bot. Ouverture/fermeture immédiates, bilan quotidien 21h UTC", inputs: ["TESTNET_EXECUTOR"], outputs: ["@CryptoRizonTrader"] },
       ]},
       { name: "Optimisation", color: "#fb923c", agents: [
         { id: "PERFORMANCE_ANALYST",  interval: "1h",      llm: null,     desc: "Calcule métriques par stratégie/asset/régime. Produit strategy_performance.json, global_performance.json, etc.", inputs: ["TESTNET_EXECUTOR"], outputs: ["STRATEGY_GATEKEEPER","TRADE_STRATEGY_TUNER"] },
-        { id: "STRATEGY_RESEARCHER",  interval: "1j",      llm: "Sonnet", desc: "Scrape Reddit (r/algotrading, r/CryptoMarkets). Score Reddit >50. ~3000 tokens/run", inputs: [], outputs: ["STRATEGY_GATEKEEPER"] },
+        { id: "STRATEGY_SCOUT",       interval: "48h",     llm: "Sonnet", desc: "Découverte de nouvelles stratégies (Reddit). 1 candidate/run. Classifie config_ready vs dev_required. Notification Telegram", inputs: [], outputs: ["STRATEGY_GATEKEEPER","@CryptoRizonTrader"] },
+        { id: "STRATEGY_RESEARCHER",  interval: "1j",      llm: "Sonnet", desc: "Remplacé par STRATEGY_SCOUT — désactivé", inputs: [], outputs: ["STRATEGY_GATEKEEPER"], skip: true },
         { id: "TRADE_STRATEGY_TUNER", interval: "1 sem.",  llm: "Sonnet", desc: "Attend 30 trades min. Affine 1 paramètre à la fois (RSI±3, BB±0.03). Rollback auto. Anti-oscillation blacklist", inputs: ["PERFORMANCE_ANALYST"], outputs: ["TRADE_GENERATOR"] },
         { id: "GLOBAL_TOKEN_TRACKER", interval: "1h",      llm: null,     desc: "Agrège token_costs.jsonl. Bilan Telegram 20h UTC sur @OppenCllaw_Bot", inputs: ["Tous les agents LLM"], outputs: ["@OppenCllaw_Bot"] },
         { id: "GLOBAL_TOKEN_ANALYST", interval: "lun+jeu", llm: "Sonnet", desc: "Analyse coûts tokens, propose optimisations. Lundi + jeudi 8h UTC", inputs: ["GLOBAL_TOKEN_TRACKER"], outputs: ["@OppenCllaw_Bot"] },
@@ -798,10 +799,10 @@ export default function SystemMap() {
 
       {/* Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
-        <MetricCard label="Actifs"   value={loading ? "—" : `${totalOk}/${totalAll}`} color="green"  sub="agents en cours" />
+        <MetricCard label="Actifs"   value={loading ? "—" : `${totalOk}/${totalAll}`} color="green"  sub="agents avec état connu" tooltip="Agents dont le statut runtime est connu via les fichiers d'état. Les agents POLY_FACTORY tournent dans un orchestrateur Python séparé." />
         <MetricCard label="Warning"  value={loading ? "—" : totalWarn} color="amber" sub="à vérifier" />
         <MetricCard label="Erreurs"  value={loading ? "—" : totalErr}  color="red"   sub="en échec" />
-        <MetricCard label="Systèmes" value={SYSTEM_DATA.length} sub={`${totalAll} agents total`} />
+        <MetricCard label="Systèmes" value={SYSTEM_DATA.length} sub={`${totalAll} agents documentés`} tooltip="Agents listés dans la carte. Inclut Trading, Polymarket, Content et Système. Les agents POLY sans état JS apparaissent sans statut runtime." />
       </div>
 
       {/* Filter bar */}
