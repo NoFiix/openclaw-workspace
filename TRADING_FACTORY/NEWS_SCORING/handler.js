@@ -13,6 +13,7 @@ const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
 const MODEL         = "claude-haiku-4-5-20251001";
 const MAX_TOKENS    = 400;
 const TIMEOUT_MS    = 8000;
+const MAX_LLM_CALLS_PER_RUN = 10; // OPT-004: prevent burst on backfill (max 120/hour at 300s interval)
 
 // Mots extrêmes déclenchant la protection anti-manipulation
 const EXTREME_WORDS = ["hack", "exploit", "ban", "crash", "shutdown", "arrest", "seized", "scam", "rug"];
@@ -134,7 +135,11 @@ export async function handler(ctx) {
     return;
   }
 
-    ctx.log(`📰 ${items.length} items à scorer (${posts.length} posts + ${articles.length} articles)`);
+    if (items.length > MAX_LLM_CALLS_PER_RUN) {
+      ctx.log(`⚡ [RATE_LIMIT] ${items.length} items en attente, limité à ${MAX_LLM_CALLS_PER_RUN}/run`);
+    }
+    const itemsToScore = items.slice(0, MAX_LLM_CALLS_PER_RUN);
+    ctx.log(`📰 ${itemsToScore.length} items à scorer (${posts.length} posts + ${articles.length} articles)`);
 
     const RUN_BUDGET_MS = 25000;
     const startedAt     = Date.now();
@@ -142,7 +147,7 @@ export async function handler(ctx) {
     let lastPostCursor    = postCursor;
     let lastArticleCursor = articleCursor;
 
-    for (const item of items) {
+    for (const item of itemsToScore) {
       const remaining = RUN_BUDGET_MS - (Date.now() - startedAt);
       if (remaining < 9000) {
         ctx.log(`⏱ Budget temps épuisé — sortie propre (${scored} scorés)`);

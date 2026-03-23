@@ -19,6 +19,8 @@ export function logTokens(stateDir, agentId, model, usage, task = "", system = "
       task,
       input:    usage?.input_tokens  ?? 0,
       output:   usage?.output_tokens ?? 0,
+      cache_read:     usage?.cache_read_input_tokens    ?? 0,
+      cache_creation: usage?.cache_creation_input_tokens ?? 0,
       total:    (usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0),
       cost_usd: calcCost(model, usage),
     };
@@ -31,8 +33,10 @@ export function logTokens(stateDir, agentId, model, usage, task = "", system = "
 }
 
 function calcCost(model, usage) {
-  const input  = usage?.input_tokens  ?? 0;
-  const output = usage?.output_tokens ?? 0;
+  const input       = usage?.input_tokens                ?? 0;
+  const output      = usage?.output_tokens               ?? 0;
+  const cacheRead   = usage?.cache_read_input_tokens     ?? 0;
+  const cacheCreate = usage?.cache_creation_input_tokens  ?? 0;
   const PRICES = {
     "claude-haiku-4-5-20251001": { in: 0.80,  out: 4.00  },
     "claude-sonnet-4-6":         { in: 3.00,  out: 15.00 },
@@ -43,5 +47,7 @@ function calcCost(model, usage) {
     "gpt-4o-mini":               { in: 0.15,  out: 0.60  },
   };
   const p = PRICES[model] ?? { in: 1.00, out: 5.00 };
-  return parseFloat(((input * p.in + output * p.out) / 1_000_000).toFixed(8));
+  // Cache read = 10% of input price, cache creation = 125% of input price
+  const cost = (input * p.in + output * p.out + cacheRead * p.in * 0.1 + cacheCreate * p.in * 1.25) / 1_000_000;
+  return parseFloat(cost.toFixed(8));
 }
