@@ -181,7 +181,7 @@ class PolyFactoryOrchestrator:
         arrive.
 
         Only loads entries that have a valid ``cached_at`` timestamp younger
-        than the 48-hour TTL used by PolyMarketAnalyst (CACHE_TTL_SECONDS).
+        than the 24-hour TTL used by PolyMarketAnalyst (CACHE_TTL_SECONDS).
         Legacy entries without ``cached_at`` are ignored.
         """
         from agents.poly_market_analyst import CACHE_TTL_SECONDS

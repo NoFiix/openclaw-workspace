@@ -26,7 +26,7 @@ CACHE_STATE_FILE = "research/resolutions_cache.json"
 PROMPT_FILE = "prompts/resolution_parser_prompt.txt"
 LLM_MODEL = "claude-sonnet-4-6"
 LLM_MAX_TOKENS = 500
-CACHE_TTL_SECONDS = 4 * 3600  # 4 hours — rotates all active markets every ~4h
+CACHE_TTL_SECONDS = 24 * 3600  # 24 hours — resolution criteria rarely change
 REPROCESS_BATCH_SIZE = 10     # max markets reanalyzed per run_once() cycle
 
 

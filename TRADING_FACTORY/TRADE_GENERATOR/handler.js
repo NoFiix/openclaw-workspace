@@ -1,7 +1,7 @@
 /**
  * TRADE_GENERATOR — Handler
  * Premier agent LLM du pipeline trading.
- * Lit les features (1m/1h/4h), le régime, le killswitch.
+ * Lit les features (5m/1h/4h), le régime, le killswitch.
  * Génère des TradeProposal via Claude Haiku.
  * Émet : trading.strategy.trade.proposal
  */
@@ -144,7 +144,7 @@ function buildUserPrompt(symbol, f5m, f1h, f4h, regime, recentNews = [], strateg
 
 ## Indicateurs techniques
 
-### 1m (court terme — bruit)
+### 5m (court terme)
 - Prix: ${f5m?.price ?? "N/A"}
 - RSI_14: ${f5m?.rsi_14 ?? "N/A"}
 - BB_pct_b: ${f5m?.bb_pct_b ?? "N/A"} (0=lower band, 1=upper band)
