@@ -222,9 +222,23 @@ export function saveWallet(strategyId, wallet) {
 /**
  * Update wallet after opening a position.
  * Deducts allocated capital from cash.
+ * Guard BUG-004-b: skip if cash after deduction would be below min_cash_threshold.
  */
 export function walletOnOpen(strategyId, valueUsd) {
   const wallet = loadWallet(strategyId);
+
+  // Guard BUG-004-b: prevent double deduction in same run from corrupting wallet
+  const minCash = 50; // matches strategies_registry default min_cash_threshold
+  const cashAfter = wallet.equity - ((wallet.allocated ?? 0) + valueUsd);
+  if (cashAfter < minCash) {
+    console.log(
+      `[walletOnOpen] SKIP ${strategyId}: cash after deduction would be ` +
+      `$${cashAfter.toFixed(2)} < threshold $${minCash} ` +
+      `(equity=$${wallet.equity} allocated=$${wallet.allocated ?? 0} value=$${valueUsd.toFixed(2)})`
+    );
+    return wallet;
+  }
+
   wallet.allocated   = (wallet.allocated ?? 0) + valueUsd;
   wallet.cash        = wallet.equity - wallet.allocated;
   wallet.updated_at  = new Date().toISOString();
