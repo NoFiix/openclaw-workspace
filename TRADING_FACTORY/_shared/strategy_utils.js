@@ -253,9 +253,10 @@ export function walletOnOpen(strategyId, valueUsd) {
 export function walletOnClose(strategyId, valueUsd, pnlUsd) {
   const wallet = loadWallet(strategyId);
   wallet.allocated    = Math.max(0, (wallet.allocated ?? 0) - valueUsd);
-  wallet.cash        += valueUsd + pnlUsd;
-  wallet.equity       = wallet.cash + wallet.allocated;
   wallet.realized_pnl = (wallet.realized_pnl ?? 0) + pnlUsd;
+  // Recalculate from invariants — immune to Open/Close desync (BUG-020)
+  wallet.equity       = wallet.initial_capital + wallet.realized_pnl;
+  wallet.cash         = wallet.equity - wallet.allocated;
   wallet.roi_pct      = parseFloat(((wallet.equity - wallet.initial_capital) / wallet.initial_capital * 100).toFixed(4));
   wallet.trade_count  = (wallet.trade_count ?? 0) + 1;
   if (pnlUsd > 0) wallet.win_count = (wallet.win_count ?? 0) + 1;
