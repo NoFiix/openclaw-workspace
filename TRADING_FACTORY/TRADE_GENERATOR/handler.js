@@ -230,13 +230,12 @@ async function callHaiku(apiKey, systemPrompt, userPrompt, stateDir = "") {
       headers: {
         "Content-Type":      "application/json",
         "x-api-key":         apiKey,
-        "anthropic-version": "2024-10-22",
-        "anthropic-beta":    "prompt-caching-2024-07-31",
+        "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
         model:      MODEL,
         max_tokens: MAX_TOKENS,
-        system:     [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
+        system:     systemPrompt,
         messages:   [{ role: "user", content: userPrompt }],
       }),
       signal: controller.signal,
