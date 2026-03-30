@@ -25,8 +25,9 @@ from core.poly_strategy_account import PolyStrategyAccount
 CONSUMER_ID = "POLY_KILL_SWITCH"
 
 # Thresholds — match POLY_STRATEGY_ACCOUNT defaults
-DAILY_DRAWDOWN_LIMIT_PCT = -5.0    # pause when daily P&L < -5% of initial capital
-TOTAL_DRAWDOWN_LIMIT_PCT = -30.0   # stop permanently when drawdown from HWM < -30%
+DAILY_DRAWDOWN_LIMIT_PCT = -100.0   # paper mode: let strategies run to full loss for observation
+TOTAL_DRAWDOWN_LIMIT_PCT = -100.0   # paper mode: let strategies run to full loss for observation
+# NOTE: restore -5.0 / -30.0 before any live deployment
 MAX_CONSECUTIVE_LOSSES = 3         # pause after 3 consecutive losing trades
 FEED_STALE_THRESHOLD_SECONDS = 300 # pause if price feed older than 5 minutes
 WARNING_RATIO = 0.8                # warn at 80% of daily limit (-4%)

@@ -45,7 +45,7 @@ from risk.poly_risk_guardian import PolyRiskGuardian
 CONSUMER_ID = "POLY_FACTORY_ORCHESTRATOR"
 
 # Filter thresholds
-MIN_EXECUTABILITY_SCORE = 40     # Filter 1 — microstructure gate
+MIN_EXECUTABILITY_SCORE = 20     # Filter 1 — microstructure gate (lowered from 40 for paper testing)
 MIN_SLIPPAGE_THRESHOLD = 0.03    # Filter 1 — slippage on real order size < 3%
 MAX_AMBIGUITY_SCORE = 3          # Filter 2 — ambiguity < 3 (strict, per pipeline §Cycle 4)
 MIN_PAPER_TRADES = 50            # promotion eligibility
@@ -351,7 +351,9 @@ class PolyFactoryOrchestrator:
             res = self._resolution_cache.get(market_id)
             if res is None:
                 return _reject("resolution", "no_resolution_data")
-            if res.get("ambiguity_score", 999) >= MAX_AMBIGUITY_SCORE:
+            amb = res.get("ambiguity_score", 999)
+            if amb >= MAX_AMBIGUITY_SCORE:
+                logger.info(f"Filter 2 BLOCKED {market_id[:16]}… ambiguity={amb} >= {MAX_AMBIGUITY_SCORE}")
                 return _reject("resolution", "high_ambiguity")
         filters_passed.append("resolution")
 
@@ -410,6 +412,7 @@ class PolyFactoryOrchestrator:
             total_capital_eur=total_capital,
             strategy=strategy,
             strategy_capital=current_capital,
+            market_id=market_id,
         )
         if not rg_result["allowed"]:
             return _reject("risk_guardian", rg_result.get("blocked_by") or "risk_guardian_blocked")

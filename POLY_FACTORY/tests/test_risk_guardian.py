@@ -348,7 +348,7 @@ def test_check_result_has_all_required_fields(guardian):
 def test_checks_dict_has_all_four_keys(guardian):
     result = guardian.check(50.0, "bundle_arb", total_capital_eur=1_000.0,
                             strategy="STRAT_A", strategy_capital=1_000.0)
-    assert set(result["checks"].keys()) == {"exposure_ok", "positions_ok", "strategy_capital_ok", "category_ok"}
+    assert set(result["checks"].keys()) == {"exposure_ok", "positions_ok", "market_positions_ok", "strategy_capital_ok", "category_ok"}
 
 
 # ---------------------------------------------------------------------------

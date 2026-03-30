@@ -32,6 +32,7 @@ CONSUMER_ID = "POLY_RISK_GUARDIAN"
 
 # Per-strategy limits (isolated capital model)
 MAX_POSITIONS_PER_STRATEGY = 6     # max simultaneous open positions per strategy
+MAX_POSITIONS_PER_MARKET   = 2     # max simultaneous open positions on same market (per strategy)
 MAX_CAPITAL_USAGE_PER_STRATEGY = 0.40  # max fraction of strategy's own capital committed
 
 # Portfolio-level hard limits
@@ -104,6 +105,7 @@ class PolyRiskGuardian:
         total_capital_eur: float,
         strategy: str = "",
         strategy_capital: float = 0.0,
+        market_id: str = "",
     ) -> dict:
         """Synchronous pre-trade portfolio check.
 
@@ -141,6 +143,11 @@ class PolyRiskGuardian:
         n_strat_positions = len(strat_positions)
         positions_ok = n_strat_positions < MAX_POSITIONS_PER_STRATEGY
 
+        # --- Check 1b: per-market position count (anti-concentration) ---
+        market_positions = [p for p in strat_positions if p.get("market_id") == market_id]
+        n_market_positions = len(market_positions)
+        market_positions_ok = n_market_positions < MAX_POSITIONS_PER_MARKET
+
         # --- Check 2: per-strategy capital usage ---
         strat_committed = sum(p["size_eur"] for p in strat_positions)
         if strategy_capital > 0:
@@ -170,6 +177,7 @@ class PolyRiskGuardian:
 
         checks = {
             "positions_ok": positions_ok,
+            "market_positions_ok": market_positions_ok,
             "strategy_capital_ok": strategy_capital_ok,
             "exposure_ok": exposure_ok,
             "category_ok": category_ok,
@@ -180,6 +188,8 @@ class PolyRiskGuardian:
         blocked_by = None
         if not positions_ok:
             blocked_by = "strategy_position_limit"
+        elif not market_positions_ok:
+            blocked_by = "market_position_limit"
         elif not strategy_capital_ok:
             blocked_by = "strategy_capital_limit"
         elif not exposure_ok:

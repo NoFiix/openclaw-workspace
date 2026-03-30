@@ -57,7 +57,7 @@ class MockKillSwitch:
 
 class MockRiskGuardian:
     def check(self, proposed_size_eur, proposed_category, total_capital_eur,
-              strategy="", strategy_capital=0.0):
+              strategy="", strategy_capital=0.0, market_id=""):
         return {"allowed": True, "blocked_by": None, "checks": {}}
 
     def close_positions_for_market(self, market_id):
@@ -276,13 +276,13 @@ class TestIlliquidMarketFilter1:
         return _make_orch(self.base)
 
     def test_low_executability_rejected_at_filter1(self):
-        orch = self._orch_with_structure(executability_score=20)
+        orch = self._orch_with_structure(executability_score=10)
         result = orch._run_filter_chain(_happy_signal())
         assert result["passed"] is False
         assert result["rejected_by"] == "microstructure"
 
     def test_low_executability_reason(self):
-        orch = self._orch_with_structure(executability_score=20)
+        orch = self._orch_with_structure(executability_score=10)
         result = orch._run_filter_chain(_happy_signal())
         assert result["reason"] == "low_executability_score"
 
