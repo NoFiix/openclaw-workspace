@@ -32,6 +32,7 @@ This module contains ONLY signal logic.  No execution, no order routing.
 """
 
 import json
+import logging
 import re
 from datetime import datetime, timezone
 
@@ -52,7 +53,7 @@ MAX_AMBIGUITY_SCORE  = 3       # reject markets with ambiguity_score >= this
 CACHE_TTL_SECONDS    = 14_400  # 4 hours — max LLM call frequency per market
 SUGGESTED_SIZE_EUR   = 25.0
 LLM_MODEL            = "claude-sonnet-4-6"
-LLM_MAX_TOKENS       = 150
+LLM_MAX_TOKENS       = 250
 LLM_CACHE_FILE       = "strategies/opp_scorer_llm_cache.json"
 
 
@@ -107,15 +108,29 @@ class PolyOppScorer:
         boolean_condition: str,
         ambiguity_score: int,
         unexpected_risk_score: int,
+        yes_ask: float = 0.0,
     ) -> str:
-        """Build the LLM prompt for opportunity scoring."""
+        """Build the adversarial LLM prompt for opportunity scoring."""
+        no_price = 1.0 - yes_ask
         return (
-            "You are evaluating a prediction market resolution condition.\n\n"
+            "You are a prediction market analyst.\n"
+            "The market price reflects aggregated information from many traders.\n"
+            "Your job is NOT to estimate blindly, but to determine "
+            "if there is a real mispricing.\n\n"
             f"Condition: {boolean_condition}\n"
-            f"Ambiguity score: {ambiguity_score}/10 (higher = more ambiguous)\n"
-            f"Unexpected risk score: {unexpected_risk_score}/10 (higher = more uncertain)\n\n"
-            "What is the probability (0.0-1.0) that this market resolves YES?\n"
-            'Respond with ONLY valid JSON: {"probability": <float 0.0-1.0>, "reasoning": "<1 sentence>"}'
+            f"Ambiguity: {ambiguity_score}/10 | Risk: {unexpected_risk_score}/10\n"
+            f"Market price: YES={yes_ask:.1%} / NO={no_price:.1%}\n\n"
+            "Steps:\n"
+            "1. What is the base rate?\n"
+            "2. What information could the market be using?\n"
+            "3. Do I have a specific reason to disagree with the market?\n"
+            "4. Is this disagreement strong enough to create an edge?\n\n"
+            "Respond ONLY with valid JSON:\n"
+            '{"probability": <float 0.0-1.0>, "has_edge": true|false, '
+            '"edge_strength": "none|weak|moderate|strong", '
+            '"reasoning": "<1 sentence>", '
+            '"why_market_might_be_right": "<1 sentence>", '
+            '"confidence": "low|medium|high"}'
         )
 
     def _call_llm(
@@ -123,9 +138,10 @@ class PolyOppScorer:
         boolean_condition: str,
         ambiguity_score: int,
         unexpected_risk_score: int,
+        yes_ask: float = 0.0,
     ) -> str:
         """Call Claude Sonnet and return the raw text response."""
-        prompt = self._build_prompt(boolean_condition, ambiguity_score, unexpected_risk_score)
+        prompt = self._build_prompt(boolean_condition, ambiguity_score, unexpected_risk_score, yes_ask)
         client = self._get_llm_client()
         response = client.messages.create(
             model=LLM_MODEL,
@@ -142,34 +158,30 @@ class PolyOppScorer:
         )
         return response.content[0].text
 
-    def _parse_llm_response(self, raw_text: str) -> tuple:
-        """Extract (probability, reasoning) from LLM response text.
-
-        Tries direct JSON parse first, then falls back to extracting the first
-        JSON object from prose.
-
-        Args:
-            raw_text: Raw string from the LLM.
+    def _parse_llm_response(self, raw_text: str) -> dict:
+        """Extract structured LLM response with adversarial fields.
 
         Returns:
-            Tuple of (probability: float, reasoning: str).
-
-        Raises:
-            ValueError: If no valid JSON with a 'probability' field is found.
+            Dict with prob_yes, reasoning, has_edge, edge_strength, confidence.
         """
-        # Direct parse
+        def _extract(data):
+            return {
+                "probability": float(data["probability"]),
+                "reasoning": str(data.get("reasoning", "")),
+                "has_edge": bool(data.get("has_edge", False)),
+                "edge_strength": str(data.get("edge_strength", "none")),
+                "confidence": str(data.get("confidence", "low")),
+            }
+
         try:
-            data = json.loads(raw_text.strip())
-            return float(data["probability"]), str(data.get("reasoning", ""))
+            return _extract(json.loads(raw_text.strip()))
         except (json.JSONDecodeError, KeyError, ValueError, TypeError):
             pass
 
-        # Extract from prose
         match = re.search(r'\{[^{}]*\}', raw_text, re.DOTALL)
         if match:
             try:
-                data = json.loads(match.group())
-                return float(data["probability"]), str(data.get("reasoning", ""))
+                return _extract(json.loads(match.group()))
             except (json.JSONDecodeError, KeyError, ValueError, TypeError):
                 pass
 
@@ -187,35 +199,29 @@ class PolyOppScorer:
         age = datetime.now(timezone.utc).timestamp() - entry.get("timestamp", 0)
         return age < CACHE_TTL_SECONDS
 
-    def _get_llm_score(self, market_id: str, resolution_payload: dict) -> tuple:
-        """Return (probability, reasoning), using cache when fresh.
-
-        Args:
-            market_id:          Market identifier.
-            resolution_payload: signal:resolution_parsed payload dict.
+    def _get_llm_score(self, market_id: str, resolution_payload: dict, yes_ask: float = 0.0) -> dict:
+        """Return LLM score dict, using cache when fresh.
 
         Returns:
-            Tuple (probability: float, reasoning: str).
+            Dict with probability, reasoning, has_edge, edge_strength, confidence.
         """
         if self._is_cache_fresh(market_id):
-            entry = self._llm_cache[market_id]
-            return entry["probability"], entry["reasoning"]
+            return self._llm_cache[market_id]
 
         boolean_condition     = resolution_payload.get("boolean_condition", "")
         ambiguity_score       = resolution_payload.get("ambiguity_score", 0)
         unexpected_risk_score = resolution_payload.get("unexpected_risk_score", 0)
 
-        raw = self._call_llm(boolean_condition, ambiguity_score, unexpected_risk_score)
-        probability, reasoning = self._parse_llm_response(raw)
+        raw = self._call_llm(boolean_condition, ambiguity_score, unexpected_risk_score, yes_ask)
+        result = self._parse_llm_response(raw)
 
         self._llm_cache[market_id] = {
-            "probability": probability,
-            "reasoning":   reasoning,
-            "timestamp":   datetime.now(timezone.utc).timestamp(),
+            **result,
+            "timestamp": datetime.now(timezone.utc).timestamp(),
         }
         self._save_llm_cache()
 
-        return probability, reasoning
+        return result
 
     # ------------------------------------------------------------------
     # Pure opportunity check
@@ -245,7 +251,22 @@ class PolyOppScorer:
         if yes_ask is None:
             return None
 
-        probability, reasoning = self._get_llm_score(market_id, resolution_payload)
+        llm = self._get_llm_score(market_id, resolution_payload, yes_ask)
+        probability = llm["probability"]
+        has_edge = llm.get("has_edge", False)
+        edge_strength = llm.get("edge_strength", "none")
+        llm_confidence = llm.get("confidence", "low")
+
+        # Log every LLM decision for post-analysis (print → pm2-out.log)
+        print(
+            f"LLM_DECISION | strategy={CONSUMER_ID} | market={market_id[:16]} | "
+            f"has_edge={has_edge} | edge_strength={edge_strength} | "
+            f"confidence={llm_confidence} | prob={probability:.3f} | yes_ask={yes_ask:.3f}"
+        )
+
+        # Adversarial gate: only emit signal if LLM confirms edge
+        if not has_edge or edge_strength in ("none", "weak") or llm_confidence == "low":
+            return None
 
         if probability < MIN_LLM_PROBABILITY:
             return None
@@ -270,9 +291,12 @@ class PolyOppScorer:
                 "llm_probability":       round(probability, 6),
                 "yes_ask":               yes_ask,
                 "edge":                  round(edge, 6),
+                "has_edge":              has_edge,
+                "edge_strength":         edge_strength,
+                "llm_confidence":        llm_confidence,
                 "ambiguity_score":       resolution_payload.get("ambiguity_score"),
                 "unexpected_risk_score": resolution_payload.get("unexpected_risk_score"),
-                "reasoning":             reasoning,
+                "reasoning":             llm.get("reasoning", ""),
             },
         }
 
