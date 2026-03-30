@@ -232,30 +232,16 @@ export async function handler(ctx) {
   }
 
   // ── 1. Pollers & container ────────────────────────────────────────────────
-  const tradingOk   = isProcessRunning("TRADING_FACTORY/poller.js");
+  const tradingOk   = isProcessRunning("trading/poller.js");
   const contentOk   = isProcessRunning("CONTENT_FACTORY/poller.js");
   const containerOk = isProcessRunning("openclaw-gateway");
 
-  if (!tradingOk)   addIssue("trading_poller_down", "CRIT", "TRADING_FACTORY/poller.js ne tourne PAS", "Tous les 22 agents trading sont a l'arret");
-  if (!contentOk)   addIssue("content_poller_down", "CRIT", "CONTENT_FACTORY/poller.js ne tourne PAS", "Le pipeline de publication CryptoRizon est arrete");
-  if (!containerOk) addIssue("container_down",       "CRIT", "Container openclaw-gateway semble KO",    "Tous les services sont potentiellement hors ligne");
+  if (!tradingOk)   addIssue("trading_poller_down", "CRIT", "trading/poller.js ne tourne PAS",      "Tous les 22 agents trading sont a l'arret");
+  if (!contentOk)   addIssue("content_poller_down", "CRIT", "content poller.js ne tourne PAS",       "Le pipeline de publication CryptoRizon est arrete");
+  if (!containerOk) addIssue("container_down",       "CRIT", "Container openclaw-gateway semble KO", "Tous les services sont potentiellement hors ligne");
 
-  // poly-orchestrator tourne sur le HOST (PM2), pas dans le container.
-  // On vérifie via le heartbeat state au lieu de ps aux.
-  // POLY_BASE = chemin container vers POLY_FACTORY/state (pas le chemin host de la config)
-  const POLY_BASE = path.join(WORKSPACE_DIR, "POLY_FACTORY", "state");
-  let polyOrchestratorOk = false;
-  {
-    // Le heartbeat_state.json est écrit en 600 par l'orchestrateur Python (uid 1001)
-    // et illisible par le container Docker (uid 1000).
-    // On utilise le mtime du fichier — mis à jour à chaque cycle de l'orchestrateur (~30s).
-    const hbPath = path.join(POLY_BASE, "orchestrator", "heartbeat_state.json");
-    const hbMtime = getFileMtimeSec(hbPath);
-    if (hbMtime > 0) {
-      const ageSec = now - hbMtime;
-      polyOrchestratorOk = ageSec < 600; // < 10 min = vivant
-    }
-  }
+  const POLY_BASE          = CONFIG.poly_factory?.state_base ?? null;
+  const polyOrchestratorOk = isProcessRunning(CONFIG.poly_factory?.process_pattern ?? "run_orchestrator.py");
   if (!polyOrchestratorOk)
     addIssue("poly_orchestrator_down", "CRIT",
       "poly-orchestrator ne tourne PAS",
@@ -335,8 +321,8 @@ export async function handler(ctx) {
   // Pas de state.json — on utilise le mtime du fichier le plus recent dans memory/
   // CF V2 actifs (surveilles) : on-demand mais usage attendu
   const contentFactoryAgents        = ["performance_analyst", "news_scoring", "copywriter", "publisher", "builder"];
-  const contentFactoryActiveAgents   = []; // CF V2 non deploye — tous desactives (mars 2026)
-  const contentFactoryInactiveAgents = ["performance_analyst", "news_scoring", "copywriter", "publisher", "builder"];
+  const contentFactoryActiveAgents   = ["performance_analyst", "news_scoring"]; // surveilles
+  const contentFactoryInactiveAgents = ["copywriter", "publisher", "builder"];  // CF V2 dev — pas en prod, alertes supprimees
   for (const agentId of contentFactoryActiveAgents) {
     const memDir = path.join(AGENTS_DIR, agentId, "memory");
     if (!fs.existsSync(memDir)) continue; // pas encore utilise, skip silencieux

@@ -33,7 +33,6 @@ This module contains ONLY signal logic.  No execution, no order routing.
 """
 
 import json
-import logging
 import re
 
 from core.poly_audit_log import PolyAuditLog
@@ -53,7 +52,7 @@ MIN_LLM_PROBABILITY_NO = 0.80    # Haiku must estimate P(NO) ≥ 80%
 MAX_AMBIGUITY_SCORE    = 3       # reject markets with ambiguity_score >= this
 SUGGESTED_SIZE_EUR     = 20.0    # smaller size — conservative NO bet
 LLM_MODEL              = "claude-haiku-4-5-20251001"
-LLM_MAX_TOKENS         = 250
+LLM_MAX_TOKENS         = 150
 LLM_CACHE_FILE         = "strategies/no_scanner_llm_cache.json"
 
 
@@ -109,29 +108,15 @@ class PolyNoScanner:
         boolean_condition: str,
         ambiguity_score: int,
         unexpected_risk_score: int,
-        no_ask: float = 0.0,
     ) -> str:
-        """Build the adversarial LLM prompt for NO opportunity scoring."""
-        yes_price = 1.0 - no_ask
+        """Build the LLM prompt for NO opportunity scoring."""
         return (
-            "You are a prediction market analyst.\n"
-            "The market price reflects aggregated information from many traders.\n"
-            "Your job is NOT to estimate blindly, but to determine "
-            "if there is a real mispricing.\n\n"
+            "You are evaluating a prediction market resolution condition.\n\n"
             f"Condition: {boolean_condition}\n"
-            f"Ambiguity: {ambiguity_score}/10 | Risk: {unexpected_risk_score}/10\n"
-            f"Market price: YES={yes_price:.1%} / NO={no_ask:.1%}\n\n"
-            "Steps:\n"
-            "1. What is the base rate?\n"
-            "2. What information could the market be using?\n"
-            "3. Do I have a specific reason to disagree with the market?\n"
-            "4. Is this disagreement strong enough to create an edge?\n\n"
-            "Respond ONLY with valid JSON:\n"
-            '{"probability": <float 0.0-1.0>, "has_edge": true|false, '
-            '"edge_strength": "none|weak|moderate|strong", '
-            '"reasoning": "<1 sentence>", '
-            '"why_market_might_be_right": "<1 sentence>", '
-            '"confidence": "low|medium|high"}'
+            f"Ambiguity score: {ambiguity_score}/10 (higher = more ambiguous)\n"
+            f"Unexpected risk score: {unexpected_risk_score}/10 (higher = more uncertain)\n\n"
+            "What is the probability (0.0-1.0) that this market resolves YES?\n"
+            'Respond with ONLY valid JSON: {"probability": <float 0.0-1.0>, "reasoning": "<1 sentence>"}'
         )
 
     def _call_llm(
@@ -139,10 +124,9 @@ class PolyNoScanner:
         boolean_condition: str,
         ambiguity_score: int,
         unexpected_risk_score: int,
-        no_ask: float = 0.0,
     ) -> str:
         """Call Claude Haiku and return the raw text response."""
-        prompt = self._build_prompt(boolean_condition, ambiguity_score, unexpected_risk_score, no_ask)
+        prompt = self._build_prompt(boolean_condition, ambiguity_score, unexpected_risk_score)
         client = self._get_llm_client()
         response = client.messages.create(
             model=LLM_MODEL,
@@ -159,11 +143,17 @@ class PolyNoScanner:
         )
         return response.content[0].text
 
-    def _parse_llm_response(self, raw_text: str) -> dict:
-        """Extract structured LLM response with adversarial fields.
+    def _parse_llm_response(self, raw_text: str) -> tuple:
+        """Extract (prob_yes, reasoning) from LLM response text.
+
+        Tries direct JSON parse first, then falls back to extracting the first
+        JSON object from prose.
+
+        Args:
+            raw_text: Raw string from the LLM.
 
         Returns:
-            Dict with keys: prob_yes, reasoning, has_edge, edge_strength, confidence.
+            Tuple of (prob_yes: float, reasoning: str).
 
         Raises:
             ValueError: If no valid JSON with a 'probability' field is found.
@@ -171,13 +161,7 @@ class PolyNoScanner:
         # Direct parse
         try:
             data = json.loads(raw_text.strip())
-            return {
-                "prob_yes": float(data["probability"]),
-                "reasoning": str(data.get("reasoning", "")),
-                "has_edge": bool(data.get("has_edge", False)),
-                "edge_strength": str(data.get("edge_strength", "none")),
-                "confidence": str(data.get("confidence", "low")),
-            }
+            return float(data["probability"]), str(data.get("reasoning", ""))
         except (json.JSONDecodeError, KeyError, ValueError, TypeError):
             pass
 
@@ -186,13 +170,7 @@ class PolyNoScanner:
         if match:
             try:
                 data = json.loads(match.group())
-                return {
-                    "prob_yes": float(data["probability"]),
-                    "reasoning": str(data.get("reasoning", "")),
-                    "has_edge": bool(data.get("has_edge", False)),
-                    "edge_strength": str(data.get("edge_strength", "none")),
-                    "confidence": str(data.get("confidence", "low")),
-                }
+                return float(data["probability"]), str(data.get("reasoning", ""))
             except (json.JSONDecodeError, KeyError, ValueError, TypeError):
                 pass
 
@@ -206,27 +184,35 @@ class PolyNoScanner:
         """Return True if this market has ever been scored (permanent cache)."""
         return market_id in self._llm_cache
 
-    def _get_llm_score(self, market_id: str, resolution_payload: dict, no_ask: float = 0.0) -> dict:
-        """Return LLM score dict, using permanent cache when available.
+    def _get_llm_score(self, market_id: str, resolution_payload: dict) -> tuple:
+        """Return (prob_yes, reasoning), using permanent cache when available.
+
+        Args:
+            market_id:          Market identifier.
+            resolution_payload: signal:resolution_parsed payload dict.
 
         Returns:
-            Dict with prob_yes, reasoning, has_edge, edge_strength, confidence.
+            Tuple (prob_yes: float, reasoning: str).
         """
         if self._is_cached(market_id):
-            return self._llm_cache[market_id]
+            entry = self._llm_cache[market_id]
+            return entry["prob_yes"], entry["reasoning"]
 
         boolean_condition     = resolution_payload.get("boolean_condition", "")
         ambiguity_score       = resolution_payload.get("ambiguity_score", 0)
         unexpected_risk_score = resolution_payload.get("unexpected_risk_score", 0)
 
-        raw = self._call_llm(boolean_condition, ambiguity_score, unexpected_risk_score, no_ask)
-        result = self._parse_llm_response(raw)
+        raw = self._call_llm(boolean_condition, ambiguity_score, unexpected_risk_score)
+        prob_yes, reasoning = self._parse_llm_response(raw)
 
-        # Permanent cache
-        self._llm_cache[market_id] = result
+        # Permanent cache — no timestamp needed
+        self._llm_cache[market_id] = {
+            "prob_yes":  prob_yes,
+            "reasoning": reasoning,
+        }
         self._save_llm_cache()
 
-        return result
+        return prob_yes, reasoning
 
     # ------------------------------------------------------------------
     # Pure opportunity check
@@ -260,23 +246,8 @@ class PolyNoScanner:
         if resolution_payload.get("ambiguity_score", 10) >= MAX_AMBIGUITY_SCORE:
             return None
 
-        llm = self._get_llm_score(market_id, resolution_payload, no_ask)
-        prob_yes = llm["prob_yes"]
+        prob_yes, reasoning = self._get_llm_score(market_id, resolution_payload)
         prob_no = 1.0 - prob_yes
-        has_edge = llm.get("has_edge", False)
-        edge_strength = llm.get("edge_strength", "none")
-        llm_confidence = llm.get("confidence", "low")
-
-        # Log every LLM decision for post-analysis (print → pm2-out.log)
-        print(
-            f"LLM_DECISION | strategy={CONSUMER_ID} | market={market_id[:16]} | "
-            f"has_edge={has_edge} | edge_strength={edge_strength} | "
-            f"confidence={llm_confidence} | prob={prob_yes:.3f} | no_ask={no_ask:.3f}"
-        )
-
-        # Adversarial gate: only emit signal if LLM confirms edge
-        if not has_edge or edge_strength in ("none", "weak") or llm_confidence == "low":
-            return None
 
         if prob_no < MIN_LLM_PROBABILITY_NO:
             return None
@@ -302,12 +273,9 @@ class PolyNoScanner:
                 "prob_no":               round(prob_no, 6),
                 "no_ask":                no_ask,
                 "edge":                  round(edge, 6),
-                "has_edge":              has_edge,
-                "edge_strength":         edge_strength,
-                "llm_confidence":        llm_confidence,
                 "ambiguity_score":       resolution_payload.get("ambiguity_score"),
                 "unexpected_risk_score": resolution_payload.get("unexpected_risk_score"),
-                "reasoning":             llm.get("reasoning", ""),
+                "reasoning":             reasoning,
             },
         }
 
