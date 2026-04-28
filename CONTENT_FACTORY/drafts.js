@@ -182,14 +182,30 @@ function tgRequest(method, body) {
   });
 }
 
+const CHANNEL_LABELS = {
+  TWITTER_ONLY:     "Twitter uniquement",
+  TWITTER_TELEGRAM: "Twitter + Telegram",
+  TWITTER_SITE:     "Twitter + Site",
+  ALL:              "Partout",
+};
+
 function makeButtons(id) {
   return {
-    inline_keyboard: [[
-      { text: "✅ Publier",        callback_data: `publish_${id}`      },
-      { text: "✏️ Modifier texte", callback_data: `modify_${id}`       },
-      { text: "🖼 Modifier image", callback_data: `modify_image_${id}` },
-      { text: "❌ Annuler",        callback_data: `cancel_${id}`       },
-    ]],
+    inline_keyboard: [
+      [
+        { text: "🐦 Twitter",          callback_data: `pub_tw_${id}` },
+        { text: "🐦+📣 Twitter+TG",    callback_data: `pub_tg_${id}` },
+      ],
+      [
+        { text: "🐦+🌐 Twitter+Site",  callback_data: `pub_site_${id}` },
+        { text: "🌐+📣+🐦 Partout",    callback_data: `pub_all_${id}` },
+      ],
+      [
+        { text: "✏️ Modifier",          callback_data: `modify_${id}` },
+        { text: "🖼 Image",             callback_data: `modify_image_${id}` },
+        { text: "❌",                   callback_data: `cancel_${id}` },
+      ],
+    ],
   };
 }
 
@@ -201,7 +217,10 @@ async function sendDraft(id) {
   const draft = getDraft(id);
   if (!draft) { console.error(`[drafts] sendDraft: ${id} introuvable`); return; }
 
-  const header  = `${id} | ✍️ <b>DRAFT — @CryptoRizon</b>`;
+  const recoLine = draft.channel
+    ? `📡 Recommandation : ${CHANNEL_LABELS[draft.channel] || draft.channel} — ${draft.channelReason || ""}\n\n`
+    : "";
+  const header  = `${recoLine}${id} | ✍️ <b>DRAFT — @CryptoRizon</b>`;
   const linkLine = draft.articleUrl ? `\n${draft.articleUrl}` : "";
   const buttons  = makeButtons(id);
 
@@ -232,6 +251,7 @@ async function sendDraft(id) {
 
 module.exports = {
   SOURCE_MAP,
+  CHANNEL_LABELS,
   getSourceName,
   createDraft,
   getDraft,

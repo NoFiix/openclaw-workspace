@@ -220,46 +220,100 @@ async function handleSelection(text) {
   }
 }
 
-async function handlePublish(id) {
+async function handlePublish(id, channels = { twitter: true, telegram: true, site: false }) {
   const draft = getDraft(id);
   if (!draft) { await sendMessage(`❌ Draft ${id} introuvable ou expiré.`); return; }
 
-  await sendMessage(`${id} | 🚀 Publication en cours sur @CryptoRizon...`);
+  await sendMessage(`${id} | 🚀 Publication en cours...`);
 
-  let mediaId = null;
-  if (draft.imageUrl) {
+  const results = { twitter: null, telegram: null, site: null };
+
+  // Twitter
+  if (channels.twitter) {
     try {
-      const imageBuffer = await resolveImageBuffer(draft.imageUrl);
-      const ext  = draft.imageUrl.startsWith("http")
-        ? draft.imageUrl.split("?")[0].split(".").pop().toLowerCase()
-        : "jpeg";
-      const mime = ext === "png" ? "image/png" : ext === "gif" ? "image/gif" : "image/jpeg";
-      const uploaded = await uploadMedia(imageBuffer, mime);
-      if (uploaded.success) { mediaId = uploaded.mediaId; }
-      else { console.error("[poller] Échec upload image:", JSON.stringify(uploaded.error)); }
-    } catch (e) { console.error("[poller] Erreur image:", e.message); }
+      let mediaId = draft.twitterMediaId || null;
+      if (!mediaId && draft.imageUrl) {
+        const imageBuffer = await resolveImageBuffer(draft.imageUrl);
+        const ext  = draft.imageUrl.startsWith("http")
+          ? draft.imageUrl.split("?")[0].split(".").pop().toLowerCase()
+          : "jpeg";
+        const mime = ext === "png" ? "image/png" : ext === "gif" ? "image/gif" : "image/jpeg";
+        const uploaded = await uploadMedia(imageBuffer, mime);
+        if (uploaded.success) {
+          mediaId = uploaded.mediaId;
+          updateDraft(id, { twitterMediaId: mediaId });
+        } else {
+          console.error("[poller] Échec upload image:", JSON.stringify(uploaded.error));
+        }
+      }
+      const tweetResult = mediaId
+        ? await postTweetWithMedia(draft.content, mediaId)
+        : await postTweet(draft.content);
+      if (tweetResult.success) {
+        results.twitter = { status: "ok", url: tweetResult.url };
+      } else {
+        results.twitter = { status: "error", detail: JSON.stringify(tweetResult.error) };
+        console.error(`[poller] ⚠️ Twitter échoué pour ${id}: ${results.twitter.detail}`);
+      }
+    } catch (e) {
+      results.twitter = { status: "error", detail: e.message };
+      console.error(`[poller] ⚠️ Twitter exception pour ${id}: ${e.message}`);
+    }
   }
 
-  const result = mediaId
-    ? await postTweetWithMedia(draft.content, mediaId)
-    : await postTweet(draft.content);
-
-  if (result.success) {
-    await publishToChannel(draft);
-    deleteDraft(id);
-    appendHistory({
-      ts:        Date.now(),
-      draft_id:  id,
-      action:    "published",
-      preview:   draft.content.slice(0, 100),
-      source:    extractSource(draft.articleUrl),
-      tweet_url: result.url || null,
-      type:      draft.type || "hourly",
-    });
-    await sendMessage(`✅ ${id} publié !\n🔗 ${result.url}`);
-  } else {
-    await sendMessage(`❌ ${id} — Échec.\n${JSON.stringify(result.error)}`);
+  // Telegram channel
+  if (channels.telegram) {
+    try {
+      await publishToChannel(draft);
+      results.telegram = { status: "ok" };
+    } catch (e) {
+      results.telegram = { status: "error", detail: e.message };
+      console.error(`[poller] ⚠️ Telegram échoué pour ${id}: ${e.message}`);
+    }
   }
+
+  // Site CryptoRizon
+  if (channels.site) {
+    try {
+      await enrichForWebsite(draft);
+      results.site = { status: "ok" };
+    } catch (e) {
+      results.site = { status: "error", detail: e.message };
+      console.error(`[poller] ⚠️ Site échoué pour ${id}: ${e.message}`);
+    }
+  }
+
+  deleteDraft(id);
+
+  const tweetUrl = results.twitter?.url || null;
+  appendHistory({
+    ts:        Date.now(),
+    draft_id:  id,
+    action:    "published",
+    channels: {
+      twitter:  results.twitter?.status === "ok",
+      telegram: results.telegram?.status === "ok",
+      site:     results.site?.status === "ok",
+    },
+    preview:   draft.content.slice(0, 100),
+    source:    extractSource(draft.articleUrl),
+    tweet_url: tweetUrl,
+    type:      draft.type || "hourly",
+  });
+
+  // Message récapitulatif avec état de chaque canal
+  const icons = { ok: "✅", error: "❌" };
+  const parts = [];
+  if (results.twitter)  parts.push(`Twitter ${icons[results.twitter.status]}`);
+  if (results.telegram) parts.push(`Telegram ${icons[results.telegram.status]}`);
+  if (results.site)     parts.push(`Site ${icons[results.site.status]}`);
+
+  let msg = `${id} | Publication terminée : ${parts.join(" | ")}`;
+  if (tweetUrl) msg += `\n🔗 ${tweetUrl}`;
+  if (results.twitter?.status === "error")  msg += `\n⚠️ Twitter : ${results.twitter.detail}`;
+  if (results.telegram?.status === "error") msg += `\n⚠️ Telegram : ${results.telegram.detail}`;
+  if (results.site?.status === "error")     msg += `\n⚠️ Site : ${results.site.detail}`;
+  await sendMessage(msg);
 }
 
 async function handleModify(id) {
@@ -331,7 +385,7 @@ async function handleModifyImage(id) {
       .filter(u => u.startsWith("http") && u !== currentImg);
 
     if (allImages.length > 0) {
-      updateDraft(id, { imageUrl: allImages[0] });
+      updateDraft(id, { imageUrl: allImages[0], twitterMediaId: null });
       await sendDraft(id);
       return;
     }
@@ -353,6 +407,85 @@ async function handleCancel(id) {
     type:      existed.type || "hourly",
   });
   await sendMessage(existed ? `${id} | ❌ Draft annulé.` : `❌ Draft ${id} introuvable ou déjà supprimé.`);
+}
+
+// ============================================================
+// ENRICHISSEMENT SITE CRYPTORIZON
+// ============================================================
+
+async function enrichForWebsite(draft) {
+  const articleBody = draft.articleBody;
+  let sourceContent;
+  let sourceQuality = "full";
+
+  if (!articleBody || articleBody.trim().length < 100) {
+    console.log(`[enrichForWebsite] articleBody absent ou insuffisant pour draft ${draft.id}`);
+    sourceContent = draft.content;
+    sourceQuality = "fallback";
+  } else {
+    sourceContent = articleBody;
+  }
+
+  const enriched = await callClaude(
+    `Tu es rédacteur pour CryptoRizon, plateforme crypto française premium. Rédige un article court (150-300 mots) en français à partir de cette actualité crypto. Utilise en priorité les données, chiffres et faits précis de l'article source complet. Style : informatif, pédagogique, accessible aux débutants comme aux intermédiaires. Jamais de conseil financier. Pas de hashtag. Pas de lien. Phrases courtes et directes.
+Réponds UNIQUEMENT en JSON valide sans markdown :
+{
+  "title": "titre accrocheur français (max 80 chars)",
+  "excerpt": "résumé 1-2 phrases (max 160 chars)",
+  "content": "article complet markdown simple (150-300 mots)",
+  "slug": "titre-kebab-case-sans-accents-max-80-chars"
+}`,
+    `Titre original : ${draft.title || "inconnu"}\nSource : ${draft.source || "inconnue"}\nTweet rédigé : ${draft.content}\nArticle source complet : ${sourceContent}`
+  );
+
+  let parsed;
+  try {
+    parsed = JSON.parse(enriched.replace(/```json\n?|```/g, "").trim());
+  } catch (e) {
+    throw new Error(`Parsing JSON enrichissement échoué: ${e.message}`);
+  }
+
+  const OPENCLAW_SECRET = process.env.OPENCLAW_SECRET;
+  if (!OPENCLAW_SECRET) throw new Error("OPENCLAW_SECRET manquant dans .env");
+
+  const payload = JSON.stringify({
+    type:           "ACTU",
+    title:          parsed.title,
+    excerpt:        parsed.excerpt,
+    content:        parsed.content,
+    slug:           parsed.slug,
+    imageUrl:       draft.imageUrl || null,
+    source:         draft.source || null,
+    originalUrl:    draft.articleUrl || null,
+    source_quality: sourceQuality,
+  });
+
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: "www.cryptorizon.fr",
+      path:     "/api/openclaw/publish",
+      method:   "POST",
+      headers:  {
+        "Authorization":  `Bearer ${OPENCLAW_SECRET}`,
+        "Content-Type":   "application/json",
+        "Content-Length":  Buffer.byteLength(payload),
+      },
+    }, (res) => {
+      let raw = "";
+      res.on("data", c => raw += c);
+      res.on("end", () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          console.log(`[site] ✅ Article publié sur CryptoRizon`);
+          resolve(raw);
+        } else {
+          reject(new Error(`API CryptoRizon ${res.statusCode}: ${raw}`));
+        }
+      });
+    });
+    req.on("error", reject);
+    req.write(payload);
+    req.end();
+  });
 }
 
 // ============================================================
@@ -378,6 +511,18 @@ async function publishToChannel(draft) {
 // ============================================================
 
 function parseCallback(data) {
+  // Boutons de publication par canal
+  const pubMatch = data.match(/^pub_(tw|tg|site|all)_(#\d+)$/);
+  if (pubMatch) {
+    const modeMap = {
+      tw:   "PUBLISH_TWITTER_ONLY",
+      tg:   "PUBLISH_TWITTER_TELEGRAM",
+      site: "PUBLISH_TWITTER_SITE",
+      all:  "PUBLISH_ALL",
+    };
+    return { action: modeMap[pubMatch[1]], id: pubMatch[2] };
+  }
+  // Legacy + modify/cancel
   const match = data.match(/^(publish|modify|modify_image|cancel)_(#\d+)$/);
   if (!match) return null;
   return { action: match[1], id: match[2] };
@@ -419,10 +564,14 @@ async function pollLoop() {
           if (!parsed) { console.warn(`[poller] Callback inconnu: ${cq.data}`); continue; }
 
           const { action, id } = parsed;
-          if      (action === "publish")      await handlePublish(id);
-          else if (action === "modify")       await handleModify(id);
-          else if (action === "modify_image") await handleModifyImage(id);
-          else if (action === "cancel")       await handleCancel(id);
+          if      (action === "PUBLISH_TWITTER_ONLY")     await handlePublish(id, { twitter: true, telegram: false, site: false });
+          else if (action === "PUBLISH_TWITTER_TELEGRAM") await handlePublish(id, { twitter: true, telegram: true,  site: false });
+          else if (action === "PUBLISH_TWITTER_SITE")     await handlePublish(id, { twitter: true, telegram: false, site: true });
+          else if (action === "PUBLISH_ALL")              await handlePublish(id, { twitter: true, telegram: true,  site: true });
+          else if (action === "publish")                  await handlePublish(id, { twitter: true, telegram: true,  site: false }); // legacy
+          else if (action === "modify")                   await handleModify(id);
+          else if (action === "modify_image")             await handleModifyImage(id);
+          else if (action === "cancel")                   await handleCancel(id);
           continue;
         }
 
@@ -441,7 +590,7 @@ async function pollLoop() {
             await sendMessage("❌ Aucun draft en attente.");
           } else {
             const id = ids[ids.length - 1];
-            updateDraft(id, { imageUrl: photoId });
+            updateDraft(id, { imageUrl: photoId, twitterMediaId: null });
             await sendDraft(id);
           }
         } else if (waitingModification) {
