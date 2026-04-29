@@ -1,5 +1,8 @@
 # POLY_FACTORY/STATE.md — Sources de vérité
 
+> ⏸️ SUSPENDU le 2026-04-28 — économie ressources API.
+> Pour relancer : `pm2 start poly-orchestrator && pm2 save`
+
 > `POLY_FACTORY/state/` ne bouge jamais. Toute donnée dashboard tracée ici.
 
 ---

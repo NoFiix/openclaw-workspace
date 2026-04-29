@@ -1,5 +1,9 @@
 # TRADING_FACTORY/STATE.md — Sources de vérité
 
+> ⏸️ SUSPENDU le 2026-04-28 — économie ressources API.
+> Pour relancer : `docker exec -d openclaw-openclaw-gateway-1 sh -c "node /home/node/.openclaw/workspace/TRADING_FACTORY/poller.js >> /home/node/.openclaw/workspace/state/trading/poller.log 2>&1"`
+> Puis décommenter les crons (@reboot, watchdog) et la ligne dans docker-start-pollers.sh.
+
 > `state/trading/` ne bouge jamais. Toute donnée dashboard doit être tracée ici.
 
 ---
